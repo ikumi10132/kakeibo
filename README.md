@@ -27,50 +27,40 @@ GitHub (main に push) ─▶ GitHub Actions ─▶ AWS CDK でデプロイ
 
 今後: 予算、貯金目標、Claude に貼って分析するための集計の書き出し
 
-## セットアップ
+## セットアップ (ブラウザだけでできます)
 
-前提: Node.js 22 以上、AWS CLI v2 (`aws login` でログイン済み)。smart-home-dashboard と同じ AWS アカウント・リージョンを使います。
+デプロイは GitHub Actions が行います。Mac のターミナルは使いません。
+smart-home-dashboard と同じ AWS アカウント・リージョンを使います (CDK の bootstrap は済んでいるので不要)。
 
-```bash
-npm ci
-```
+### 1. デプロイ用の権限を作る (最初に 1 回だけ)
 
-### 1. 初回デプロイ
+1. AWS コンソールを開き、左下の **CloudShell** を開く
+2. [`scripts/setup-github-role.sh`](scripts/setup-github-role.sh) の中身をすべて貼り付けて Enter
+3. 最後に表示される `arn:aws:iam::...:role/kakeibo-deploy` をコピーしておく
 
-CDK の bootstrap は smart-home-dashboard で済んでいるので不要です。
+### 2. GitHub に設定を登録する
 
-```bash
-npm run deploy
-```
+リポジトリの Settings → Secrets and variables → Actions → **Variables** に次の 2 つを登録します。
 
-完了すると `SiteUrl` (画面の URL) や `UserPoolId` が表示されます。
+| 名前 | 値 |
+|---|---|
+| `AWS_DEPLOY_ROLE_ARN` | 手順 1 でコピーした値 |
+| `KAKEIBO_USERS` | ログインする人のメールアドレス (カンマ区切り。例 `a@example.com,b@example.com`) |
 
-### 2. ログインユーザーを作る (2 人分)
+### 3. デプロイする
 
-新規登録は無効にしてあるので、CLI で作成します。
+Actions タブ →「CI / Deploy」→ **Run workflow**。以降は `main` に push するたびに自動でデプロイされます。
 
-```bash
-aws cognito-idp admin-create-user --user-pool-id <UserPoolId> --username you@example.com \
-  --user-attributes Name=email,Value=you@example.com Name=email_verified,Value=true
-```
+完了すると、`KAKEIBO_USERS` の各アドレスに仮パスワードのメールが届きます。
+画面の URL は、Actions の実行ログの最後 (`Kakeibo.SiteUrl`) に表示されます。
+開いてログインし、新しいパスワードを設定してください。
+iPhone では Safari の共有メニューから「ホーム画面に追加」すると、アプリのように使えます。
 
-仮パスワードがメールで届くので、`SiteUrl` を開いてログインし、新しいパスワードを設定します。
-iPhone では Safari の共有メニューから「ホーム画面に追加」してください。
+利用者を増やすときは `KAKEIBO_USERS` に追加して再実行します。一覧から外してもユーザーは削除されません (削除は AWS コンソールの Cognito から)。
 
-### 3. iPhone のショートカットを作る
+### 4. iPhone のショートカットを作る
 
 画面の「設定 → ショートカット」でトークンを発行し、表示される手順に沿って作成します。
-
-### 4. GitHub Actions で自動デプロイする
-
-1. デプロイ用の IAM ロールを作る (初回のみ。GitHub の OIDC プロバイダーは smart-home-dashboard で作成済みのものを使います)
-   ```bash
-   cd infra && npx cdk deploy KakeiboGithubOidc
-   ```
-2. 出力された `DeployRoleArn` を、GitHub のリポジトリ設定 → Secrets and variables → Actions → **Variables** に
-   `AWS_DEPLOY_ROLE_ARN` として登録
-
-以降は `main` に push すると、型チェック・テスト・ビルドのあと自動でデプロイされます。
 
 ## ローカル開発
 

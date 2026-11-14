@@ -18,8 +18,13 @@ import type { Construct } from 'constructs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const LOCAL_DEV_URL = 'http://localhost:5173';
 
+export interface KakeiboStackProps extends cdk.StackProps {
+  /** ログインユーザーのメールアドレス。初回に仮パスワードがメールで届く */
+  users?: string[];
+}
+
 export class KakeiboStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: KakeiboStackProps = {}) {
     super(scope, id, props);
 
     // ---------- データ (DynamoDB) ----------
@@ -66,6 +71,21 @@ export class KakeiboStack extends cdk.Stack {
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
+    // 利用者 (新規登録は無効なので、ここに書いた人だけがログインできる)。
+    // 一覧から外してもユーザーは削除しない (家計簿のデータが残っているため)。削除は Cognito の画面から行う
+    for (const email of props.users ?? []) {
+      const user = new cognito.CfnUserPoolUser(this, `User-${email.replace(/[^A-Za-z0-9]/g, '-')}`, {
+        userPoolId: userPool.userPoolId,
+        username: email,
+        userAttributes: [
+          { name: 'email', value: email },
+          { name: 'email_verified', value: 'true' },
+        ],
+        desiredDeliveryMediums: ['EMAIL'],
+      });
+      user.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
+    }
+
     const domain = userPool.addDomain('Domain', {
       cognitoDomain: { domainPrefix: `kakeibo-${this.account}` },
     });

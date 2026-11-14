@@ -38,4 +38,6 @@ jobs:
       - name: Deploy
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN != ''
         working-directory: infra
+        env:
+          KAKEIBO_USERS: ${{ vars.KAKEIBO_USERS }}
         run: npx cdk deploy Kakeibo --require-approval never

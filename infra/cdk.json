@@ -1,6 +1,3 @@
 {
-  "app": "npx tsx bin/app.ts",
-  "context": {
-    "githubRepo": "ikumi10132/kakeibo"
-  }
+  "app": "npx tsx bin/app.ts"
 }
