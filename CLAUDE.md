@@ -79,8 +79,8 @@ Constraints for each level:
 
 # このプロジェクトについて
 
-- 家計簿 Web アプリ。構成は姉妹プロジェクト `ikumi10132/smart-home-dashboard` にそろえている (npm workspaces: `api` / `web` / `infra`、TypeScript、CDK、React + Vite、Cognito、GitHub Actions + OIDC)
-- デプロイは GitHub Actions のみ (ユーザーは Mac のターミナルを使わない)。デプロイ用ロール kakeibo-deploy は scripts/setup-github-role.sh で作成済みの想定
+- 家計簿 Web アプリ。構成は姉妹プロジェクト `ikumi10132/smart-home-dashboard` にそろえている (npm workspaces: `api` / `web` / `infra`、TypeScript、CDK、React + Vite、Cognito、GitHub Actions)
+- デプロイはユーザーが AWS CloudShell で README のコマンドを貼り付けて行う (Mac のターミナルは使わない)。このアカウントは SCP で IAM の OIDC プロバイダー操作が禁止されており、GitHub Actions からはデプロイできない。GitHub Actions は型チェック・テスト・ビルドのみ
 - 利用者は 2 人。データは Cognito の `sub` ごとに完全に分ける (DynamoDB の PK = `USER#<sub>`)。共有機能は作らない
 - iPhone のショートカットからは `/shortcut/*` に、画面で発行したトークン (`kb_...`、ハッシュのみ保存) で送る。Cognito は通さない
 - AI 分析はアプリに組み込まない。将来は「集計値だけ」を書き出してユーザーが Claude に貼る方式 (店名・メモは含めない)

@@ -1,17 +1,17 @@
-name: CI / Deploy
+name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
+  # デプロイは CloudShell から行う (このアカウントは SCP で GitHub の OIDC 連携が禁止されているため)
   workflow_dispatch:
 
 permissions:
-  id-token: write # AWS への OIDC 認証に必要
   contents: read
 
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -27,17 +27,3 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-
-      # main への push 時のみデプロイ (リポジトリ変数 AWS_DEPLOY_ROLE_ARN の設定が必要)
-      - name: Configure AWS credentials
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN != ''
-        uses: aws-actions/configure-aws-credentials@v5
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
-      - name: Deploy
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN != ''
-        working-directory: infra
-        env:
-          KAKEIBO_USERS: ${{ vars.KAKEIBO_USERS }}
-        run: npx cdk deploy Kakeibo --require-approval never

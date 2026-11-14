@@ -8,7 +8,8 @@ iPhone の Apple Pay で払うと自動で記録される、自分用の家計�
 [スマホ/PC の画面] ── CloudFront + S3 │
      │                              ▼
      └──(Cognito でログイン)──▶ API Gateway ─▶ Lambda (Node.js) ─▶ DynamoDB
-GitHub (main に push) ─▶ GitHub Actions ─▶ AWS CDK でデプロイ
+GitHub (main に push) ─▶ GitHub Actions で型チェック・テスト
+AWS CloudShell ─▶ AWS CDK でデプロイ
 ```
 
 | ディレクトリ | 内容 |
@@ -27,38 +28,31 @@ GitHub (main に push) ─▶ GitHub Actions ─▶ AWS CDK でデプロイ
 
 今後: 予算、貯金目標、Claude に貼って分析するための集計の書き出し
 
-## セットアップ (ブラウザだけでできます)
+## デプロイ (ブラウザだけでできます)
 
-デプロイは GitHub Actions が行います。Mac のターミナルは使いません。
-smart-home-dashboard と同じ AWS アカウント・リージョンを使います (CDK の bootstrap は済んでいるので不要)。
+このアカウント (新しい AWS エクスペリエンス) は、AWS が管理する制限 (SCP) で GitHub との OIDC 連携が禁止されているため、
+GitHub Actions からはデプロイできません。AWS コンソールの **CloudShell** からデプロイします。
+CDK の bootstrap は smart-home-dashboard で済んでいるので不要です。
 
-### 1. デプロイ用の権限を作る (最初に 1 回だけ)
+1. AWS コンソール右上の `>_` アイコンで CloudShell を開く (リージョンは ap-southeast-2)
+2. 次をまとめて貼り付けて Enter (`KAKEIBO_USERS` はログインする人のメールアドレス。カンマ区切り)
 
-1. AWS コンソールを開き、左下の **CloudShell** を開く
-2. [`scripts/setup-github-role.sh`](scripts/setup-github-role.sh) の中身をすべて貼り付けて Enter
-3. 最後に表示される `arn:aws:iam::...:role/kakeibo-deploy` をコピーしておく
+```bash
+export KAKEIBO_USERS="a@example.com,b@example.com"
+curl -so- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash >/dev/null && source ~/.nvm/nvm.sh && nvm install 22 >/dev/null \
+  && cd /tmp && rm -rf kakeibo && git clone --depth 1 https://github.com/ikumi10132/kakeibo.git && cd kakeibo \
+  && npm ci && npm run build && cd infra && npx cdk deploy Kakeibo --require-approval never
+```
 
-### 2. GitHub に設定を登録する
+- 作業場所を `/tmp` にしているのは、CloudShell の保存領域 (1GB) を使い切らないため
+- 最後に `Kakeibo.SiteUrl` (画面の URL) が表示されます
+- 初回は `KAKEIBO_USERS` の各アドレスに仮パスワードのメールが届きます。画面を開いてログインし、新しいパスワードを設定してください。
+  2 回目以降も同じアドレスを指定してください (一覧から外してもユーザーは削除されません。削除は AWS コンソールの Cognito から)
+- iPhone では Safari の共有メニューから「ホーム画面に追加」すると、アプリのように使えます
 
-リポジトリの Settings → Secrets and variables → Actions → **Variables** に次の 2 つを登録します。
+コードを更新したときも、同じコマンドを貼り付けるだけです。
 
-| 名前 | 値 |
-|---|---|
-| `AWS_DEPLOY_ROLE_ARN` | 手順 1 でコピーした値 |
-| `KAKEIBO_USERS` | ログインする人のメールアドレス (カンマ区切り。例 `a@example.com,b@example.com`) |
-
-### 3. デプロイする
-
-Actions タブ →「CI / Deploy」→ **Run workflow**。以降は `main` に push するたびに自動でデプロイされます。
-
-完了すると、`KAKEIBO_USERS` の各アドレスに仮パスワードのメールが届きます。
-画面の URL は、Actions の実行ログの最後 (`Kakeibo.SiteUrl`) に表示されます。
-開いてログインし、新しいパスワードを設定してください。
-iPhone では Safari の共有メニューから「ホーム画面に追加」すると、アプリのように使えます。
-
-利用者を増やすときは `KAKEIBO_USERS` に追加して再実行します。一覧から外してもユーザーは削除されません (削除は AWS コンソールの Cognito から)。
-
-### 4. iPhone のショートカットを作る
+### iPhone のショートカットを作る
 
 画面の「設定 → ショートカット」でトークンを発行し、表示される手順に沿って作成します。
 
