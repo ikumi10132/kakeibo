@@ -40,12 +40,23 @@ export interface Transaction {
   source: 'manual' | 'shortcut';
   /** ショートカットからの自動登録はカテゴリーを確認するまで false */
   confirmed: boolean;
+  /** 立て替え (あとで他の人からお金を受け取る支出)。古いデータには無いので未定義は false 扱い */
+  advance?: boolean;
+  /** 立て替えで受け取った額。null / 未定義なら未精算。自分の負担 = amount - received */
+  received?: number | null;
   createdAt: string;
 }
 
 export type TransactionInput = Omit<Transaction, 'id' | 'createdAt' | 'source' | 'confirmed'> & {
   confirmed?: boolean;
 };
+
+/** 自分の負担額。立て替えは受け取った額を差し引く (未精算の間は全額) */
+export const ownAmount = (t: Pick<Transaction, 'amount' | 'advance' | 'received'>): number =>
+  t.advance ? t.amount - (t.received ?? 0) : t.amount;
+
+export const isOpenAdvance = (t: Pick<Transaction, 'advance' | 'received'>): boolean =>
+  !!t.advance && (t.received === null || t.received === undefined);
 
 export interface Rule {
   id: string;

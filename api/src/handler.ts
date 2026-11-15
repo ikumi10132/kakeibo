@@ -6,6 +6,7 @@ import type {
 import * as db from './db.js';
 import { categoryLabel, isDate, isMonth, matchRule, normalize, parseAmount, todayJst, yen } from './logic.js';
 import {
+  isOpenAdvance,
   PAYMENT_LABELS,
   PAYMENT_METHODS,
   type Category,
@@ -88,15 +89,31 @@ function validateTx(b: Record<string, unknown>, categories: Category[]) {
   } catch (e) {
     throw new HttpError(400, (e as Error).message);
   }
+  const type = txType(b.type);
+  const advance = type === 'expense' && isTrue(b.advance);
   return {
     date,
-    type: txType(b.type),
+    type,
     amount,
     categoryId,
     payment: payment(b.payment, 'other'),
     merchant: str(b.merchant),
     memo: str(b.memo, 300),
+    advance,
+    received: advance ? parseReceived(b.received, amount) : null,
   };
+}
+
+const isTrue = (v: unknown) => v === true || v === 'true' || v === 'はい';
+
+/** 立て替えで受け取った額。空なら未精算 (null)。0 円 (結局もらえなかった) も可 */
+function parseReceived(v: unknown, amount: number): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(String(v).normalize('NFKC').replace(/[^\d.]/g, ''));
+  if (!Number.isFinite(n) || n < 0) throw new HttpError(400, '受け取った額が不正です');
+  const r = Math.round(n);
+  if (r > amount) throw new HttpError(400, '受け取った額が支払った金額を超えています');
+  return r;
 }
 
 /** 手でカテゴリーを直したとき、その店名をルールとして覚える */
@@ -137,6 +154,7 @@ async function appRoute(event: APIGatewayProxyEventV2WithJWTAuthorizer, uid: str
     // 明細
     case 'GET /transactions': {
       if (q.unconfirmed) return json(200, (await db.listTransactions(uid)).filter((t) => !t.confirmed));
+      if (q.advance === 'open') return json(200, (await db.listTransactions(uid)).filter(isOpenAdvance));
       if (!isMonth(q.month)) throw new HttpError(400, 'month=YYYY-MM を指定してください');
       return json(200, await db.listTransactions(uid, q.month));
     }
@@ -250,6 +268,8 @@ async function shortcutRoute(event: APIGatewayProxyEventV2): Promise<APIGatewayP
         memo: str(b.memo, 300) || (card ? card : ''),
         source: 'shortcut',
         confirmed,
+        advance: type === 'expense' && isTrue(b.advance),
+        received: null,
       });
       const label = categoryLabel(categoryId, categories);
       const result: ShortcutResult = {

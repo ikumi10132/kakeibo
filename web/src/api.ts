@@ -30,6 +30,7 @@ export const api = {
 
   transactions: (month: string) => call<Transaction[]>(`/transactions?month=${month}`),
   unconfirmed: () => call<Transaction[]>('/transactions?unconfirmed=1'),
+  openAdvances: () => call<Transaction[]>('/transactions?advance=open'),
   createTransaction: (t: TransactionInput) => send<Transaction>('POST', '/transactions', t),
   updateTransaction: (id: string, t: TransactionInput) => send<Transaction>('PUT', `/transactions/${enc(id)}`, t),
   deleteTransaction: (id: string) => send<{ ok: true }>('DELETE', `/transactions/${enc(id)}`),

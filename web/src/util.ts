@@ -1,4 +1,4 @@
-import type { Category, Transaction } from '../../api/src/types';
+import { ownAmount, type Category, type Transaction } from '../../api/src/types';
 
 export const yen = (n: number) => `¥${n.toLocaleString('ja-JP')}`;
 
@@ -62,12 +62,22 @@ export function totals(txs: Transaction[], categories: Category[]): Totals {
       income += t.amount;
       continue;
     }
-    expense += t.amount;
+    // 立て替えは受け取った額を差し引いた「自分の負担」で数える
+    const own = ownAmount(t);
+    expense += own;
     const key = rootOf(t.categoryId, categories)?.id ?? '';
-    map.set(key, (map.get(key) ?? 0) + t.amount);
+    map.set(key, (map.get(key) ?? 0) + own);
   }
   const byCategory = [...map.entries()]
     .map(([id, amount]) => ({ category: findCategory(id, categories), amount }))
+    .filter((x) => x.amount > 0)
     .sort((a, b) => b.amount - a.amount);
   return { expense, income, byCategory };
 }
+
+/** その日の支出 (自分の負担) の合計 */
+export const dayExpense = (txs: Transaction[]) =>
+  txs.filter((t) => t.type === 'expense').reduce((s, t) => s + ownAmount(t), 0);
+
+/** カレンダー用の短い金額表記 (例: 1,234 / 1.2万) */
+export const shortYen = (n: number) => (n >= 100_000 ? `${(n / 10_000).toFixed(0)}万` : n >= 10_000 ? `${(n / 10_000).toFixed(1)}万` : n.toLocaleString('ja-JP'));

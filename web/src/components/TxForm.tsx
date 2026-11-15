@@ -19,7 +19,11 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
   const [payment, setPayment] = useState<PaymentMethod>(tx?.payment ?? 'applepay');
   const [merchant, setMerchant] = useState(tx?.merchant ?? '');
   const [memo, setMemo] = useState(tx?.memo ?? '');
+  const [advance, setAdvance] = useState(tx?.advance ?? false);
+  const [received, setReceived] = useState(tx?.received != null ? String(tx.received) : '');
   const [busy, setBusy] = useState(false);
+  const amountNum = Number(amount.replace(/[^\d]/g, '')) || 0;
+  const receivedNum = received === '' ? null : Number(received.replace(/[^\d]/g, '')) || 0;
 
   const changeType = (t: TxType) => {
     setType(t);
@@ -32,7 +36,12 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
     if (!n) return toast('金額を入力してください', true);
     setBusy(true);
     try {
-      const input = { type, amount: n, date, categoryId, payment, merchant, memo };
+      if (advance && receivedNum !== null && receivedNum > n) {
+        setBusy(false);
+        return toast('受け取った額が支払った金額を超えています', true);
+      }
+      const isAdvance = type === 'expense' && advance;
+      const input = { type, amount: n, date, categoryId, payment, merchant, memo, advance: isAdvance, received: isAdvance ? receivedNum : null };
       if (tx) await api.updateTransaction(tx.id, input);
       else await api.createTransaction(input);
       onSaved(`${yen(n)} を${tx ? '更新' : '記録'}しました`);
@@ -107,6 +116,39 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
             </select>
           </label>
         </div>
+
+        {type === 'expense' && (
+          <div className="advance-box">
+            <label className="switch-row">
+              <span>
+                <strong>立て替え</strong>
+                <span className="muted small"> あとで他の人から受け取る支払い</span>
+              </span>
+              <input type="checkbox" role="switch" checked={advance} onChange={(e) => setAdvance(e.target.checked)} />
+            </label>
+            {advance && (
+              <>
+                <label className="field">
+                  <span>受け取った額 (まだなら空欄)</span>
+                  <div className="amount-input small-amount">
+                    <span aria-hidden>¥</span>
+                    <input
+                      className="input"
+                      inputMode="numeric"
+                      placeholder="未精算"
+                      value={received === '' ? '' : Number(received.replace(/[^\d]/g, '') || 0).toLocaleString('ja-JP')}
+                      onChange={(e) => setReceived(e.target.value.replace(/[^\d]/g, ''))}
+                    />
+                  </div>
+                </label>
+                <p className="small">
+                  自分の負担: <strong>{yen(Math.max(0, amountNum - (receivedNum ?? 0)))}</strong>
+                  {receivedNum === null && <span className="muted">（受け取るまでは全額を支出として数えます）</span>}
+                </p>
+              </>
+            )}
+          </div>
+        )}
 
         <label className="field">
           <span>店名</span>

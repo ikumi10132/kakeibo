@@ -1,17 +1,20 @@
 import type { Transaction } from '../../../api/src/types';
 import type { Shared } from '../App';
 import { totals, yen } from '../util';
+import { Advances } from './Advances';
 import { MonthNav } from './MonthNav';
 
 interface Props extends Shared {
   month: string;
   setMonth: (m: string) => void;
   txs: Transaction[] | null;
+  advances: Transaction[];
   inboxCount: number;
   openInbox: () => void;
 }
 
-export function Home({ month, setMonth, txs, categories, inboxCount, openInbox }: Props) {
+export function Home({ month, setMonth, txs, advances, inboxCount, openInbox, ...shared }: Props) {
+  const { categories } = shared;
   const t = txs ? totals(txs, categories) : null;
   const max = t?.byCategory[0]?.amount ?? 0;
 
@@ -43,6 +46,8 @@ export function Home({ month, setMonth, txs, categories, inboxCount, openInbox }
           </div>
         </div>
       </section>
+
+      <Advances {...shared} txs={advances} />
 
       <section className="card">
         <h2 className="card-title">カテゴリー別の支出</h2>

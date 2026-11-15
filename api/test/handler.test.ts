@@ -197,3 +197,30 @@ test('入力のチェック', async () => {
   assert.equal((await call('POST /categories', { body: { name: '孫', parentId: 'food-cafe' } })).status, 400);
   assert.equal((await call('GET /categories', { user: null })).status, 401);
 });
+
+test('立て替え: 受け取った額を後から登録し、差額が自分の負担になる', async () => {
+  const created = await call<Transaction>('POST /transactions', {
+    body: { amount: 6000, date: '2026-11-03', categoryId: 'social', merchant: '居酒屋', advance: true },
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.advance, true);
+  assert.equal(created.body.received, null);
+
+  const open = await call<Transaction[]>('GET /transactions', { query: { advance: 'open' } });
+  assert.deepEqual(open.body.map((t) => t.id), [created.body.id]);
+
+  assert.equal(
+    (await call('PUT /transactions/{id}', { path: { id: created.body.id }, body: { ...created.body, received: 7000 } })).status,
+    400,
+  );
+  const settled = await call<Transaction>('PUT /transactions/{id}', {
+    path: { id: created.body.id },
+    body: { ...created.body, received: '4,000' },
+  });
+  assert.equal(settled.body.received, 4000);
+  assert.equal((await call<Transaction[]>('GET /transactions', { query: { advance: 'open' } })).body.length, 0);
+
+  // 収入には立て替えを付けられない
+  const income = await call<Transaction>('POST /transactions', { body: { amount: 100, type: 'income', advance: true } });
+  assert.equal(income.body.advance, false);
+});

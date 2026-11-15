@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { defaultCategories, defaultRules } from '../src/defaults.js';
 import { categoryLabel, isDate, matchRule, parseAmount, todayJst } from '../src/logic.js';
-import type { Rule } from '../src/types.js';
+import { isOpenAdvance, ownAmount, type Rule } from '../src/types.js';
 
 test('ショートカットから届くさまざまな金額表記を円の整数にする', () => {
   assert.equal(parseAmount('¥1,234'), 1234);
@@ -47,4 +47,15 @@ test('日付は日本時間で扱う', () => {
   assert.equal(todayJst(new Date('2026-11-14T15:30:00Z')), '2026-11-15');
   assert.ok(isDate('2026-02-28'));
   assert.ok(!isDate('2026/02/28'));
+});
+
+test('自分の負担額: 立て替えは受け取った額を引く (未精算は全額)', () => {
+  assert.equal(ownAmount({ amount: 3000 }), 3000);
+  assert.equal(ownAmount({ amount: 3000, advance: true, received: null }), 3000);
+  assert.equal(ownAmount({ amount: 3000, advance: true, received: 2000 }), 1000);
+  assert.equal(ownAmount({ amount: 3000, advance: true, received: 0 }), 3000);
+  assert.ok(isOpenAdvance({ advance: true, received: null }));
+  assert.ok(isOpenAdvance({ advance: true }));
+  assert.ok(!isOpenAdvance({ advance: true, received: 0 }));
+  assert.ok(!isOpenAdvance({ advance: false }));
 });

@@ -115,6 +115,16 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
   min-height: 44px;
 }
 .input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* iOS Safari の日付欄は独自の最小幅を持つため、そのままだと隣の欄にはみ出す */
+input[type='date'].input {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  display: block;
+  text-align: left;
+}
+input[type='date'].input::-webkit-date-and-time-value { text-align: left; }
+select.input { min-width: 0; text-overflow: ellipsis; }
 
 .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
 .field > .input, .field > div { color: var(--text); }
@@ -272,3 +282,34 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
   max-width: calc(100% - 32px); box-shadow: 0 6px 18px rgb(0 0 0 / 0.2);
 }
 .toast-error { background: var(--danger); color: #fff; }
+
+/* ---- 立て替え ---- */
+.advance-box { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
+.switch-row input { appearance: none; -webkit-appearance: none; flex: none; width: 50px; height: 30px; border-radius: 999px; background: var(--surface-2); position: relative; cursor: pointer; transition: background 0.15s; margin: 0; }
+.switch-row input::after { content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); transition: transform 0.15s; }
+.switch-row input:checked { background: var(--accent); }
+.switch-row input:checked::after { transform: translateX(20px); }
+.small-amount, .small-amount .input { font-size: 20px; }
+.tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 0 6px; border-radius: 6px; margin-right: 4px; vertical-align: 1px; background: var(--accent-soft); color: var(--accent); }
+.tag-open { background: #fff1d6; color: #9a6400; }
+@media (prefers-color-scheme: dark) { .tag-open { background: #3a2c10; color: #f3c36b; } }
+.tx-sub { display: block; font-size: 11px; color: var(--muted); text-align: right; }
+.settle-row { display: flex; gap: 8px; align-items: center; }
+.settle-row .input { flex: 1; min-width: 0; }
+
+/* ---- カレンダー ---- */
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 8px; }
+.cal-head { text-align: center; font-size: 11px; color: var(--muted); padding: 2px 0; }
+.cal-head.sun, .cal-day.sun .cal-num { color: var(--danger); }
+.cal-head.sat, .cal-day.sat .cal-num { color: #3b7ddd; }
+.cal-day { aspect-ratio: 1 / 1.05; min-width: 0; border: 0; border-radius: 10px; background: var(--surface); padding: 4px 2px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; cursor: pointer; }
+.cal-day.empty { background: transparent; cursor: default; }
+.cal-day.today { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cal-day.selected { background: var(--accent); }
+.cal-day.selected .cal-num, .cal-day.selected .cal-amt { color: var(--accent-text); }
+.cal-num { font-size: 13px; font-weight: 600; }
+.cal-amt { font-size: 10px; font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; overflow: hidden; max-width: 100%; }
+.cal-amt.income { color: var(--income); }
+.inbox-head { width: 100%; }
+.card .inbox-item { padding: 0; }

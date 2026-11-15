@@ -74,6 +74,7 @@ function Main({ onAuthError }: { onAuthError: () => void }) {
   const [categories, setCategories] = useState<Category[] | null>(null);
   const [txs, setTxs] = useState<Transaction[] | null>(null);
   const [unconfirmed, setUnconfirmed] = useState<Transaction[] | null>(null);
+  const [advances, setAdvances] = useState<Transaction[]>([]);
   const [version, setVersion] = useState(0);
   const [editing, setEditing] = useState<Editing>(null);
   const [toastMsg, setToastMsg] = useState<{ text: string; error?: boolean } | null>(null);
@@ -114,6 +115,7 @@ function Main({ onAuthError }: { onAuthError: () => void }) {
 
   useEffect(() => {
     api.unconfirmed().then(setUnconfirmed, handleError);
+    api.openAdvances().then(setAdvances, handleError);
   }, [version, handleError]);
 
   // アプリに戻ってきたとき (ショートカットで記録したあとなど) に最新にする
@@ -139,7 +141,7 @@ function Main({ onAuthError }: { onAuthError: () => void }) {
     <div className="app">
       <main className="content">
         {tab === 'home' && (
-          <Home {...shared} month={month} setMonth={setMonth} txs={txs} inboxCount={inboxCount} openInbox={() => setTab('inbox')} />
+          <Home {...shared} month={month} setMonth={setMonth} txs={txs} advances={advances} inboxCount={inboxCount} openInbox={() => setTab('inbox')} />
         )}
         {tab === 'list' && <TxList {...shared} month={month} setMonth={setMonth} txs={txs} />}
         {tab === 'inbox' && <Inbox {...shared} txs={unconfirmed} />}
