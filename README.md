@@ -35,10 +35,9 @@ GitHub Actions からはデプロイできません。AWS コンソールの **C
 CDK の bootstrap は smart-home-dashboard で済んでいるので不要です。
 
 1. AWS コンソール右上の `>_` アイコンで CloudShell を開く (リージョンは ap-southeast-2)
-2. 次をまとめて貼り付けて Enter (`KAKEIBO_USERS` はログインする人のメールアドレス。カンマ区切り)
+2. 次をまとめて貼り付けて Enter
 
 ```bash
-export KAKEIBO_USERS="a@example.com,b@example.com"
 curl -so- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash >/dev/null && source ~/.nvm/nvm.sh && nvm install 22 >/dev/null \
   && cd /tmp && rm -rf kakeibo && git clone --depth 1 https://github.com/ikumi10132/kakeibo.git && cd kakeibo \
   && npm ci && npm run build && cd infra && npx cdk deploy Kakeibo --require-approval never
@@ -46,15 +45,24 @@ curl -so- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
 
 - 作業場所を `/tmp` にしているのは、CloudShell の保存領域 (1GB) を使い切らないため
 - 最後に `Kakeibo.SiteUrl` (画面の URL) が表示されます
-- 初回は `KAKEIBO_USERS` の各アドレスに仮パスワードのメールが届きます。画面を開いてログインし、新しいパスワードを設定してください。
-  2 回目以降も同じアドレスを指定してください (一覧から外してもユーザーは削除されません。削除は AWS コンソールの Cognito から)
+- コードを更新したときも、同じコマンドを貼り付けるだけです
 - iPhone では Safari の共有メニューから「ホーム画面に追加」すると、アプリのように使えます
-- 仮パスワードでログインできないときは、CloudShell でパスワードを直接設定できます (1 行で貼り付け、表示されたらパスワードを入力。12 文字以上で英大文字・英小文字・数字・記号を含める)
-  ```bash
-  read -s -p "家計簿の新しいパスワード: " PW && echo && aws cognito-idp admin-set-user-password --user-pool-id <UserPoolId> --username "メールアドレス" --password "$PW" --permanent && echo "設定しました"; unset PW
-  ```
 
-コードを更新したときも、同じコマンドを貼り付けるだけです。
+### ログインユーザーを増やす
+
+新規登録は無効にしてあるので、CloudShell で作ります (メールアドレスを書き換えて 1 行で貼り付け、表示されたらパスワードを入力。12 文字以上で英大文字・英小文字・数字・記号を含める)。
+
+```bash
+read -s -p "パスワード: " PW && echo && aws cognito-idp admin-create-user --user-pool-id <UserPoolId> --username "メールアドレス" --user-attributes Name=email,Value="メールアドレス" Name=email_verified,Value=true --message-action SUPPRESS >/dev/null && aws cognito-idp admin-set-user-password --user-pool-id <UserPoolId> --username "メールアドレス" --password "$PW" --permanent && echo "作成しました"; unset PW
+```
+
+パスワードを忘れたときは、次で設定し直せます。
+
+```bash
+read -s -p "家計簿の新しいパスワード: " PW && echo && aws cognito-idp admin-set-user-password --user-pool-id <UserPoolId> --username "メールアドレス" --password "$PW" --permanent && echo "設定しました"; unset PW
+```
+
+(初回に `KAKEIBO_USERS="a@example.com,b@example.com"` を付けてデプロイすると、仮パスワードのメールでユーザーを作ることもできます。作成済みのユーザーは、付けずにデプロイしても削除されません)
 
 ### iPhone のショートカットを作る
 
