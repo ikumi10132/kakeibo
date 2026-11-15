@@ -4,7 +4,7 @@ import { KakeiboStack } from '../lib/kakeibo-stack.js';
 const app = new cdk.App();
 
 // 画面・API・ログイン・データ。CloudShell からデプロイする (README 参照)
-new KakeiboStack(app, 'Kakeibo', {
+const stack = new KakeiboStack(app, 'Kakeibo', {
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     // smart-home-dashboard と同じリージョン
@@ -21,3 +21,6 @@ new KakeiboStack(app, 'Kakeibo', {
   certificateArn: process.env.KAKEIBO_CERT_ARN || app.node.tryGetContext('certificateArn') || undefined,
   adminUsers: (app.node.tryGetContext('adminUsers') as string[] | undefined) ?? [],
 });
+
+// アプリごとの利用料を出すための目印。ダッシュボード (apps.wakalabo.net) が Cost Explorer でこのタグごとに集計する
+cdk.Tags.of(stack).add('app', 'kakeibo');
