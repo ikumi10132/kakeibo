@@ -2,6 +2,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as cdk from 'aws-cdk-lib';
 import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
@@ -21,6 +22,13 @@ const LOCAL_DEV_URL = 'http://localhost:5173';
 export interface KakeiboStackProps extends cdk.StackProps {
   /** ログインユーザーのメールアドレス。初回に仮パスワードがメールで届く */
   users?: string[];
+  /**
+   * 独自ドメイン (例 kakeibo.wakalabo.net)。certificateArn とセットで指定する。
+   * 証明書は CloudFront の決まりで us-east-1 に置く必要があり、CloudShell で AWS CLI から作成する (README 参照)。
+   * cross-region の CDK スタックは us-east-1 に Lambda を作るため使わない
+   */
+  domainName?: string;
+  certificateArn?: string;
 }
 
 export class KakeiboStack extends cdk.Stack {
@@ -47,6 +55,15 @@ export class KakeiboStack extends cdk.Stack {
       autoDeleteObjects: true,
     });
 
+    if (!!props.domainName !== !!props.certificateArn) {
+      throw new Error('KAKEIBO_DOMAIN と KAKEIBO_CERT_ARN は両方指定してください');
+    }
+    if (props.certificateArn && !props.certificateArn.startsWith('arn:aws:acm:us-east-1:')) {
+      throw new Error('CloudFront で使う証明書は us-east-1 で作成したものを指定してください');
+    }
+    const customDomain =
+      props.domainName && props.certificateArn ? { name: props.domainName, certificateArn: props.certificateArn } : undefined;
+
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(siteBucket),
@@ -60,8 +77,15 @@ export class KakeiboStack extends cdk.Stack {
         responsePagePath: '/index.html',
       })),
       priceClass: cloudfront.PriceClass.PRICE_CLASS_200, // 日本を含む
+      ...(customDomain && {
+        domainNames: [customDomain.name],
+        certificate: acm.Certificate.fromCertificateArn(this, 'Certificate', customDomain.certificateArn),
+      }),
     });
-    const siteUrl = `https://${distribution.distributionDomainName}`;
+    const cloudfrontUrl = `https://${distribution.distributionDomainName}`;
+    // 独自ドメインを設定しても、cloudfront.net の URL でも引き続き開けるようにしておく
+    const siteUrls = customDomain ? [`https://${customDomain.name}`, cloudfrontUrl] : [cloudfrontUrl];
+    const siteUrl = siteUrls[0]!;
 
     // ---------- ログイン (Cognito) ----------
     const userPool = new cognito.UserPool(this, 'UserPool', {
@@ -94,8 +118,8 @@ export class KakeiboStack extends cdk.Stack {
       oAuth: {
         flows: { authorizationCodeGrant: true },
         scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL],
-        callbackUrls: [`${siteUrl}/`, `${LOCAL_DEV_URL}/`],
-        logoutUrls: [`${siteUrl}/`, `${LOCAL_DEV_URL}/`],
+        callbackUrls: [...siteUrls, LOCAL_DEV_URL].map((u) => `${u}/`),
+        logoutUrls: [...siteUrls, LOCAL_DEV_URL].map((u) => `${u}/`),
       },
       preventUserExistenceErrors: true,
       accessTokenValidity: cdk.Duration.hours(1),
@@ -129,7 +153,7 @@ export class KakeiboStack extends cdk.Stack {
     const api = new apigw.HttpApi(this, 'HttpApi', {
       defaultAuthorizer: authorizer,
       corsPreflight: {
-        allowOrigins: [siteUrl, LOCAL_DEV_URL],
+        allowOrigins: [...siteUrls, LOCAL_DEV_URL],
         allowMethods: [
           apigw.CorsHttpMethod.GET,
           apigw.CorsHttpMethod.POST,
@@ -178,6 +202,8 @@ export class KakeiboStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'SiteUrl', { value: siteUrl });
+    // お名前.com で独自ドメインの CNAME の向き先にする値
+    new cdk.CfnOutput(this, 'CloudFrontDomain', { value: distribution.distributionDomainName });
     new cdk.CfnOutput(this, 'ApiUrl', { value: api.apiEndpoint });
     new cdk.CfnOutput(this, 'UserPoolId', { value: userPool.userPoolId });
     new cdk.CfnOutput(this, 'UserPoolClientId', { value: client.userPoolClientId });

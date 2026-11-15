@@ -68,6 +68,24 @@ read -s -p "家計簿の新しいパスワード: " PW && echo && aws cognito-id
 
 画面の「設定 → ショートカット」でトークンを発行し、表示される手順に沿って作成します。
 
+## 独自ドメイン (kakeibo.wakalabo.net)
+
+CloudFront で使う HTTPS 証明書は、AWS の決まりで **us-east-1** に作る必要があります。CloudShell の AWS CLI で作成します
+(CDK でリージョンをまたぐと us-east-1 に Lambda が作られるため使いません)。
+
+1. 証明書を申請し、確認用の CNAME を表示する
+   ```bash
+   ARN=$(aws acm request-certificate --region us-east-1 --domain-name kakeibo.wakalabo.net --validation-method DNS --query CertificateArn --output text) && echo "ARN=$ARN" && sleep 10 && aws acm describe-certificate --region us-east-1 --certificate-arn "$ARN" --query 'Certificate.DomainValidationOptions[0].ResourceRecord' --output table
+   ```
+2. 表示された CNAME (Name / Value) をお名前.com に登録し、状態が `ISSUED` になるまで待つ
+   ```bash
+   aws acm list-certificates --region us-east-1 --query 'CertificateSummaryList[].[DomainName,Status,CertificateArn]' --output table
+   ```
+3. `infra/cdk.json` の context に `domainName` と `certificateArn` を書いてデプロイ (上のデプロイ手順と同じコマンド)
+4. お名前.com で `kakeibo` の CNAME を、出力された `Kakeibo.CloudFrontDomain` に向ける
+
+独自ドメインを設定しても、`cloudfront.net` の URL でも引き続き開けます。iPhone のショートカットが使う API の URL は変わりません。
+
 ## ローカル開発
 
 デプロイ後の出力値で `web/public/config.json` を作ります (`config.example.json` を参照)。
