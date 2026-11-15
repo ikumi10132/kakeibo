@@ -49,6 +49,10 @@ curl -so- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
 - 初回は `KAKEIBO_USERS` の各アドレスに仮パスワードのメールが届きます。画面を開いてログインし、新しいパスワードを設定してください。
   2 回目以降も同じアドレスを指定してください (一覧から外してもユーザーは削除されません。削除は AWS コンソールの Cognito から)
 - iPhone では Safari の共有メニューから「ホーム画面に追加」すると、アプリのように使えます
+- 仮パスワードでログインできないときは、CloudShell でパスワードを直接設定できます (1 行で貼り付け、表示されたらパスワードを入力。12 文字以上で英大文字・英小文字・数字・記号を含める)
+  ```bash
+  read -s -p "家計簿の新しいパスワード: " PW && echo && aws cognito-idp admin-set-user-password --user-pool-id <UserPoolId> --username "メールアドレス" --password "$PW" --permanent && echo "設定しました"; unset PW
+  ```
 
 コードを更新したときも、同じコマンドを貼り付けるだけです。
 
