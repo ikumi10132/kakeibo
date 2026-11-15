@@ -376,7 +376,7 @@ function Shortcut({ toast, handleError }: Shared) {
       <section className="card guide">
         <h2 className="card-title">① Apple Pay で払ったら自動で記録</h2>
         <ol>
-          <li>ショートカットアプリ →「オートメーション」→「＋」→「<b>取引</b>」</li>
+          <li>ショートカットアプリ →「オートメーション」→「＋」→「<b>ウォレット</b>」(一覧の下のほう。上の検索欄に「ウォレット」と入れても出ます。iOS 17 以降)</li>
           <li>対象のカードを選び、「<b>すぐに実行</b>」にして「次へ」→「新規の空のショートカット」</li>
           <li>アクション「<b>URLの内容を取得</b>」を追加して、次のように設定
             <dl className="kv">
