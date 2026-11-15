@@ -9,6 +9,7 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
@@ -29,6 +30,8 @@ export interface KakeiboStackProps extends cdk.StackProps {
    */
   domainName?: string;
   certificateArn?: string;
+  /** 管理者 (ユーザーの追加などができる) にする Cognito のユーザー名 (sub)。cdk.json の adminUsers */
+  adminUsers?: string[];
 }
 
 export class KakeiboStack extends cdk.Stack {
@@ -110,6 +113,21 @@ export class KakeiboStack extends cdk.Stack {
       user.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
     }
 
+    // 管理者グループ。ログインのトークンに cognito:groups として入り、API で確認する
+    const adminGroup = new cognito.CfnUserPoolGroup(this, 'AdminGroup', {
+      userPoolId: userPool.userPoolId,
+      groupName: 'admin',
+      description: 'ユーザーの追加・停止・削除ができる',
+    });
+    for (const username of props.adminUsers ?? []) {
+      const attach = new cognito.CfnUserPoolUserToGroupAttachment(this, `Admin-${username}`, {
+        userPoolId: userPool.userPoolId,
+        groupName: 'admin',
+        username,
+      });
+      attach.addDependency(adminGroup);
+    }
+
     const domain = userPool.addDomain('Domain', {
       cognitoDomain: { domainPrefix: `kakeibo-${this.account}` },
     });
@@ -136,7 +154,7 @@ export class KakeiboStack extends cdk.Stack {
       architecture: lambda.Architecture.ARM_64,
       memorySize: 256,
       timeout: cdk.Duration.seconds(15),
-      environment: { TABLE_NAME: table.tableName, NODE_OPTIONS: '--enable-source-maps' },
+      environment: { TABLE_NAME: table.tableName, USER_POOL_ID: userPool.userPoolId, NODE_OPTIONS: '--enable-source-maps' },
       bundling: { minify: true, sourceMap: true, externalModules: [] },
       logGroup: new logs.LogGroup(this, 'ApiLogs', {
         retention: logs.RetentionDays.ONE_MONTH,
@@ -144,6 +162,21 @@ export class KakeiboStack extends cdk.Stack {
       }),
     });
     table.grantReadWriteData(fn);
+    // 管理者画面のユーザー管理 (API 側で admin グループのときだけ呼ぶ)
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          'cognito-idp:ListUsers',
+          'cognito-idp:ListUsersInGroup',
+          'cognito-idp:AdminCreateUser',
+          'cognito-idp:AdminSetUserPassword',
+          'cognito-idp:AdminEnableUser',
+          'cognito-idp:AdminDisableUser',
+          'cognito-idp:AdminDeleteUser',
+        ],
+        resources: [userPool.userPoolArn],
+      }),
+    );
 
     const authorizer = new HttpJwtAuthorizer(
       'CognitoAuthorizer',
@@ -175,6 +208,8 @@ export class KakeiboStack extends cdk.Stack {
       ['/rules/{id}', [DELETE]],
       ['/tokens', [GET, POST]],
       ['/tokens/{id}', [DELETE]],
+      ['/admin/users', [GET, POST]],
+      ['/admin/users/{username}', [PUT, DELETE]],
     ];
     for (const [p, methods] of routes) api.addRoutes({ path: p, methods, integration });
 

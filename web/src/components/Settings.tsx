@@ -2,12 +2,13 @@ import { useEffect, useState, type FormEvent } from 'react';
 import type { ApiToken, Category, CreatedToken, Rule, TxType } from '../../../api/src/types';
 import { api } from '../api';
 import type { Shared } from '../App';
-import { logout } from '../auth';
+import { isAdmin, logout } from '../auth';
+import { AdminUsers } from './AdminUsers';
 import { getConfig } from '../config';
 import { categoryLabel, orderedCategories } from '../util';
 import { CategorySelect } from './CategorySelect';
 
-type Section = 'categories' | 'rules' | 'shortcut';
+type Section = 'categories' | 'rules' | 'shortcut' | 'users';
 
 export function Settings(props: Shared) {
   const [section, setSection] = useState<Section>('categories');
@@ -19,6 +20,7 @@ export function Settings(props: Shared) {
           ['categories', 'カテゴリー'],
           ['rules', '振り分け'],
           ['shortcut', 'ショートカット'],
+          ...(isAdmin() ? ([['users', 'ユーザー']] as const) : []),
         ] as const).map(([id, label]) => (
           <button key={id} role="tab" aria-selected={section === id} className={section === id ? 'active' : ''} onClick={() => setSection(id)}>
             {label}
@@ -28,6 +30,7 @@ export function Settings(props: Shared) {
       {section === 'categories' && <Categories {...props} />}
       {section === 'rules' && <Rules {...props} />}
       {section === 'shortcut' && <Shortcut {...props} />}
+      {section === 'users' && isAdmin() && <AdminUsers {...props} />}
       <button className="btn btn-ghost" onClick={logout}>ログアウト</button>
     </>
   );

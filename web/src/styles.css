@@ -313,3 +313,13 @@ select.input { min-width: 0; text-overflow: ellipsis; }
 .cal-amt.income { color: var(--income); }
 .inbox-head { width: 100%; }
 .card .inbox-item { padding: 0; }
+
+/* ---- 管理者: ユーザー管理 ---- */
+.admin-form { display: flex; flex-direction: column; gap: 10px; }
+.user-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 0; }
+.list > li + li.user-row { border-top: 1px solid var(--border); }
+.user-row .grow { display: flex; flex-direction: column; flex: 1 1 100%; }
+.user-email { overflow-wrap: anywhere; }
+.user-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip-danger { background: var(--danger-soft); color: var(--danger); }
+.chip:first-child { margin-left: 0; }

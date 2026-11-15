@@ -1,4 +1,4 @@
-import type { ApiToken, Category, CreatedToken, Rule, Transaction, TransactionInput } from '../../api/src/types';
+import type { AdminUser, ApiToken, Category, CreatedToken, Rule, Transaction, TransactionInput } from '../../api/src/types';
 import { getAccessToken } from './auth';
 import { getConfig } from './config';
 
@@ -42,4 +42,11 @@ export const api = {
   tokens: () => call<ApiToken[]>('/tokens'),
   createToken: (name: string) => send<CreatedToken>('POST', '/tokens', { name }),
   deleteToken: (id: string) => send<{ ok: true }>('DELETE', `/tokens/${enc(id)}`),
+
+  // 管理者のみ
+  adminUsers: () => call<AdminUser[]>('/admin/users'),
+  adminCreateUser: (email: string, password?: string) => send<AdminUser>('POST', '/admin/users', { email, password }),
+  adminUpdateUser: (username: string, body: { enabled?: boolean; password?: string }) =>
+    send<{ ok: true }>('PUT', `/admin/users/${enc(username)}`, body),
+  adminDeleteUser: (username: string) => send<{ ok: true }>('DELETE', `/admin/users/${enc(username)}`),
 };

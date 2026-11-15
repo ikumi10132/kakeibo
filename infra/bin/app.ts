@@ -19,4 +19,5 @@ new KakeiboStack(app, 'Kakeibo', {
   // 環境変数 KAKEIBO_DOMAIN / KAKEIBO_CERT_ARN でも上書きできる
   domainName: process.env.KAKEIBO_DOMAIN || app.node.tryGetContext('domainName') || undefined,
   certificateArn: process.env.KAKEIBO_CERT_ARN || app.node.tryGetContext('certificateArn') || undefined,
+  adminUsers: (app.node.tryGetContext('adminUsers') as string[] | undefined) ?? [],
 });

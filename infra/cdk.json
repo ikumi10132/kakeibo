@@ -2,6 +2,8 @@
   "app": "npx tsx bin/app.ts",
   "context": {
     "domainName": "kakeibo.wakalabo.net",
-    "certificateArn": "arn:aws:acm:us-east-1:812114845293:certificate/9f80b106-424d-492d-adec-c8a6b1b84247"
+    "certificateArn": "arn:aws:acm:us-east-1:812114845293:certificate/9f80b106-424d-492d-adec-c8a6b1b84247",
+    "//adminUsers": "管理者の Cognito ユーザー名 (sub)。f9ae2468-... = i.sakumoto@icloud.com",
+    "adminUsers": ["f9ae2468-30b1-70aa-f21a-e7c32e23e008"]
   }
 }

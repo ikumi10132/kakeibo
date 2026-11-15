@@ -224,3 +224,22 @@ test('立て替え: 受け取った額を後から登録し、差額が自分の
   const income = await call<Transaction>('POST /transactions', { body: { amount: 100, type: 'income', advance: true } });
   assert.equal(income.body.advance, false);
 });
+
+test('管理者 API は admin グループのときだけ使える', async () => {
+  const res = await handler({
+    routeKey: 'GET /admin/users',
+    headers: {},
+    isBase64Encoded: false,
+    requestContext: { authorizer: { jwt: { claims: { sub: USER } } } },
+  } as unknown as APIGatewayProxyEventV2);
+  assert.equal((res as APIGatewayProxyStructuredResultV2).statusCode, 403);
+
+  const self = await handler({
+    routeKey: 'DELETE /admin/users/{username}',
+    headers: {},
+    isBase64Encoded: false,
+    pathParameters: { username: USER },
+    requestContext: { authorizer: { jwt: { claims: { sub: USER, 'cognito:groups': '[admin]' } } } },
+  } as unknown as APIGatewayProxyEventV2);
+  assert.equal((self as APIGatewayProxyStructuredResultV2).statusCode, 400); // 自分自身は削除できない
+});

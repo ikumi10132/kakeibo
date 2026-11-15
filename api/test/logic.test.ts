@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { defaultCategories, defaultRules } from '../src/defaults.js';
 import { categoryLabel, isDate, matchRule, parseAmount, todayJst } from '../src/logic.js';
+import { groupsFromClaim } from '../src/admin.js';
 import { isOpenAdvance, ownAmount, type Rule } from '../src/types.js';
 
 test('ショートカットから届くさまざまな金額表記を円の整数にする', () => {
@@ -58,4 +59,12 @@ test('自分の負担額: 立て替えは受け取った額を引く (未精算�
   assert.ok(isOpenAdvance({ advance: true }));
   assert.ok(!isOpenAdvance({ advance: true, received: 0 }));
   assert.ok(!isOpenAdvance({ advance: false }));
+});
+
+test('JWT の cognito:groups はさまざまな形で届く', () => {
+  assert.deepEqual(groupsFromClaim(['admin']), ['admin']);
+  assert.deepEqual(groupsFromClaim('[admin]'), ['admin']);
+  assert.deepEqual(groupsFromClaim('[admin other]'), ['admin', 'other']);
+  assert.deepEqual(groupsFromClaim('["admin","x"]'), ['admin', 'x']);
+  assert.deepEqual(groupsFromClaim(undefined), []);
 });

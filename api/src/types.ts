@@ -88,3 +88,15 @@ export interface ShortcutResult {
   /** iPhone の通知にそのまま出せる文 */
   message: string;
 }
+
+/** 管理者画面で扱うログインユーザー */
+export interface AdminUser {
+  /** Cognito 内部のユーザー名 (変更・削除のときに使う) */
+  username: string;
+  email: string;
+  /** CONFIRMED (利用中) / FORCE_CHANGE_PASSWORD (初回ログイン前) など */
+  status: string;
+  enabled: boolean;
+  isAdmin: boolean;
+  createdAt: string;
+}

@@ -119,3 +119,30 @@ export function logout(): void {
   const params = new URLSearchParams({ client_id: userPoolClientId, logout_uri: redirectUri() });
   location.assign(`${cognitoDomain}/logout?${params}`);
 }
+
+/** ログイン中のユーザーが入っている Cognito グループ (表示の切り替え用。実際の権限確認は API 側で行う) */
+export function currentGroups(): string[] {
+  const token = loadTokens()?.accessToken;
+  if (!token) return [];
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]!.replace(/-/g, '+').replace(/_/g, '/'))) as Record<string, unknown>;
+    const groups = payload['cognito:groups'];
+    return Array.isArray(groups) ? groups.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+export const isAdmin = () => currentGroups().includes('admin');
+
+/** ログイン中のユーザーの Cognito ユーザー名 (sub) */
+export function currentUsername(): string | undefined {
+  const token = loadTokens()?.accessToken;
+  if (!token) return undefined;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]!.replace(/-/g, '+').replace(/_/g, '/'))) as Record<string, unknown>;
+    return typeof payload.username === 'string' ? payload.username : undefined;
+  } catch {
+    return undefined;
+  }
+}
