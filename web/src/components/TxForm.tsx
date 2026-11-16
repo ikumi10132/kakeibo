@@ -42,7 +42,7 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
         return toast('受け取った額が支払った金額を超えています', true);
       }
       const isAdvance = type === 'expense' && advance;
-      const input = { type, amount: n, date, categoryId, payment, merchant, memo, advance: isAdvance, received: isAdvance ? receivedNum : null };
+      const input = { type, amount: n, date, categoryId, payment: type === 'income' ? ('other' as const) : payment, merchant, memo, advance: isAdvance, received: isAdvance ? receivedNum : null };
       if (tx) await api.updateTransaction(tx.id, input);
       else await api.createTransaction(input);
       onSaved(`${yen(n)} を${tx ? '更新' : '記録'}しました`);
@@ -100,19 +100,22 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
 
         <CategoryPicker categories={categories} type={type} value={categoryId} onChange={setCategoryId} />
 
-        <div className="field-row">
+        {/* 支払方法は支出のときだけ (収入は日付だけ) */}
+        <div className={type === 'expense' ? 'field-row' : ''}>
           <label className="field">
             <span>日付</span>
             <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
           </label>
-          <label className="field">
-            <span>支払方法</span>
-            <select className="input" value={payment} onChange={(e) => setPayment(e.target.value as PaymentMethod)}>
-              {PAYMENT_METHODS.map((p) => (
-                <option key={p} value={p}>{PAYMENT_LABELS[p]}</option>
-              ))}
-            </select>
-          </label>
+          {type === 'expense' && (
+            <label className="field">
+              <span>支払方法</span>
+              <select className="input" value={payment} onChange={(e) => setPayment(e.target.value as PaymentMethod)}>
+                {PAYMENT_METHODS.map((p) => (
+                  <option key={p} value={p}>{PAYMENT_LABELS[p]}</option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
 
         {type === 'expense' && (
@@ -149,7 +152,7 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
         )}
 
         <label className="field">
-          <span>店名</span>
+          <span>{type === 'income' ? '入金元 (会社名など・任意)' : '店名'}</span>
           <input className="input" value={merchant} onChange={(e) => setMerchant(e.target.value)} maxLength={100} />
         </label>
         <label className="field">
