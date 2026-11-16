@@ -276,3 +276,18 @@ test('カード会社の利用通知メールを記録し、同じメールは�
   assert.equal(byMessage.body.amount, 980);
   assert.equal((await call('POST /shortcut/mail', { user: null, body: { text } })).status, 401);
 });
+
+test('トークンは本文の token 項目や URL でも渡せる', async () => {
+  const token = await issueToken();
+  const text = '【ご利用日時(日本時間)】 2026/11/16 13:12\n【ご利用金額】 800円\n【ご利用先】 テスト';
+  const inBody = await call<ShortcutResult>('POST /shortcut/mail', { user: null, body: { token, text } });
+  assert.equal(inBody.status, 201);
+  const res = await handler({
+    routeKey: 'GET /shortcut/categories',
+    headers: {},
+    isBase64Encoded: false,
+    queryStringParameters: { token },
+    requestContext: {},
+  } as unknown as APIGatewayProxyEventV2);
+  assert.equal((res as APIGatewayProxyStructuredResultV2).statusCode, 200);
+});

@@ -433,9 +433,14 @@ function Shortcut({ toast, handleError }: Shared) {
               <dt>URL</dt>
               <dd><code className="code">{apiUrl}/shortcut/mail</code> <button className="btn btn-small" onClick={() => void copy(`${apiUrl}/shortcut/mail`)}>コピー</button></dd>
               <dt>方法</dt><dd>POST</dd>
-              <dt>ヘッダ</dt><dd>① と同じ (<code>Authorization</code> ＝ <code>Bearer </code>＋トークン)</dd>
+              <dt>ヘッダ</dt><dd>なし (トークンは本文で送る)</dd>
               <dt>本文を要求</dt>
-              <dd>JSON。テキスト項目 <code>text</code> ＝ 変数「ショートカットの入力」の<b>コンテンツ</b></dd>
+              <dd>JSON。テキスト項目を 2 つ追加
+                <ul>
+                  <li><code>token</code> ＝ 発行したトークン (<code>kb_</code> で始まる文字をそのまま貼り付け)</li>
+                  <li><code>text</code> ＝ 変数「ショートカットの入力」の<b>コンテンツ</b></li>
+                </ul>
+              </dd>
             </dl>
           </li>
           <li>「<b>辞書の値を取得</b>」(キー <code>message</code>) →「<b>通知を表示</b>」</li>

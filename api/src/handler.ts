@@ -336,8 +336,17 @@ function mailText(b: Record<string, unknown>): string {
 // ---------- iPhone のショートカットから使う API (トークン認証) ----------
 
 async function shortcutRoute(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyStructuredResultV2> {
-  const auth = event.headers.authorization ?? '';
-  const token = auth.replace(/^Bearer\s+/i, '').trim();
+  // トークンは Authorization ヘッダ、本文の token 項目、URL の ?token= のどれでもよい
+  // (iPhone でヘッダに全角スペースなどが入ると、リクエストごと拒否されて原因が分かりにくいため)
+  const auth = (event.headers.authorization ?? '').replace(/^Bearer[\s\u3000]+/i, '').trim();
+  let bodyToken = '';
+  try {
+    const t = parseBody(event).token;
+    if (typeof t === 'string') bodyToken = t.trim();
+  } catch {
+    /* 本文が JSON でないときはヘッダか URL のトークンを使う */
+  }
+  const token = auth || bodyToken || (event.queryStringParameters?.token ?? '').trim();
   const uid = token ? await db.userIdFromToken(token) : undefined;
   if (!uid) throw new HttpError(401, 'トークンが無効です。家計簿の設定画面で発行し直してください');
   await db.ensureSeeded(uid);
