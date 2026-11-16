@@ -307,6 +307,32 @@ async function record(uid: string, r: RecordInput): Promise<ShortcutResult> {
   };
 }
 
+/** ログ用: 値の形だけを表す (中身は出さない) */
+function describe(v: unknown): string {
+  if (typeof v === 'string') return `string(${v.length})`;
+  if (Array.isArray(v)) return `array(${v.length})[${v.map(describe).slice(0, 3).join(',')}]`;
+  if (v && typeof v === 'object') return `object{${Object.keys(v).slice(0, 10).join(',')}}`;
+  return typeof v;
+}
+
+/** 文字・一覧 (複数のメール)・入れ子のオブジェクトのどれで届いても、文字をつなげて本文にする */
+function flattenText(v: unknown, depth = 0): string {
+  if (depth > 4) return '';
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) return v.map((x) => flattenText(x, depth + 1)).filter(Boolean).join('\n');
+  if (v && typeof v === 'object') return Object.values(v).map((x) => flattenText(x, depth + 1)).filter(Boolean).join('\n');
+  return '';
+}
+
+/** ショートカットで項目名を間違えやすいので、text 以外の名前でも受け付ける */
+function mailText(b: Record<string, unknown>): string {
+  for (const key of ['text', 'content', 'contents', 'body', 'message', 'コンテンツ']) {
+    const t = flattenText(b[key]).trim();
+    if (t) return t.slice(0, 50_000);
+  }
+  return flattenText(b).trim().slice(0, 50_000);
+}
+
 // ---------- iPhone のショートカットから使う API (トークン認証) ----------
 
 async function shortcutRoute(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyStructuredResultV2> {
@@ -355,11 +381,22 @@ async function shortcutRoute(event: APIGatewayProxyEventV2): Promise<APIGatewayP
 
     // カード会社の利用通知メール (iPhone の「メール」オートメーションから本文を送る)
     case 'POST /shortcut/mail': {
-      const b = parseBody(event);
-      // ショートカットで項目名を間違えやすいので、text 以外の名前でも受け付ける
-      const raw = [b.text, b.content, b.body, b.message].find((v) => typeof v === 'string' && v.trim());
-      const text = typeof raw === 'string' ? raw.slice(0, 50_000) : '';
-      if (!text) throw new HttpError(400, 'メールの本文がありません。「本文を要求」の項目名を text、値を「コンテンツ」にしてください');
+      // ここでのエラーは iPhone では「Bad Request」としか見えないことがあるので、すべて 200 で理由を返す
+      let b: Record<string, unknown>;
+      try {
+        b = parseBody(event);
+      } catch {
+        console.warn('mail: body is not JSON', { contentType: event.headers['content-type'], length: event.body?.length ?? 0 });
+        return json(200, { message: '記録できませんでした: 本文が JSON ではありません。「本文を要求」を JSON にしてください' });
+      }
+      // 調査用に、届いた項目の名前と形だけを残す (本文の中身は残さない)
+      console.info('mail: received', Object.fromEntries(Object.entries(b).map(([k, v]) => [k, describe(v)])));
+      const text = mailText(b);
+      if (!text) {
+        return json(200, {
+          message: `記録できませんでした: メールの本文が空です (届いた項目: ${Object.keys(b).join(', ') || 'なし'})。「本文を要求」の項目 text の値を「コンテンツ」にしてください`,
+        });
+      }
       let mail: CardMail;
       try {
         mail = parseCardMail(text);

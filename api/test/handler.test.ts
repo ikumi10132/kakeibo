@@ -261,7 +261,12 @@ test('カード会社の利用通知メールを記録し、同じメールは�
   const notUsage = await call<{ message: string }>('POST /shortcut/mail', { token, user: null, body: { text: 'キャンペーンのお知らせ' } });
   assert.equal(notUsage.status, 200);
   assert.match(notUsage.body.message, /記録しませんでした/);
-  assert.equal((await call('POST /shortcut/mail', { token, user: null, body: {} })).status, 400);
+  const empty = await call<{ message: string }>('POST /shortcut/mail', { token, user: null, body: {} });
+  assert.equal(empty.status, 200);
+  assert.match(empty.body.message, /本文が空/);
+  // 一覧 (複数のメール) の形で届いても読む
+  const asList = await call<ShortcutResult>('POST /shortcut/mail', { token, user: null, body: { text: [text.replace('2,060', '1,500')] } });
+  assert.equal(asList.body.amount, 1500);
   // 項目名が message でも受け付ける
   const byMessage = await call<ShortcutResult>('POST /shortcut/mail', {
     token,
