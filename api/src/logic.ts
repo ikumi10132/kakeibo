@@ -56,8 +56,23 @@ export interface CardMail {
  * JCB の「カードご利用通知」の形式 (【ご利用日時(日本時間)】 2026/11/16 13:12 / 【ご利用金額】 2,060円 / 【ご利用先】 …) に対応。
  * 似た書き方 (ご利用日・利用金額・ご利用店名 など) も読む
  */
+/** HTML のメール本文をテキストにする (改行になるタグは改行に、それ以外のタグは消す) */
+export function htmlToText(s: string): string {
+  if (!/<[a-z][\s\S]*>/i.test(s)) return s;
+  return s
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
+    .replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&yen;/g, '¥')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#(\d+);/g, (_, n: string) => String.fromCharCode(Number(n)));
+}
+
 export function parseCardMail(raw: string): CardMail {
-  const text = raw.normalize('NFKC').replace(/\r/g, '');
+  const text = htmlToText(raw).normalize('NFKC').replace(/\r/g, '');
   const line = (re: RegExp) => text.match(re)?.[1]?.trim() ?? '';
   const label = (names: string) => new RegExp(`(?:【|\\[|■|・)?\\s*(?:ご)?(?:${names})[^】\\]:：\\n]*(?:】|\\]|:|：)?[ \\t]*([^\\n]+)`);
 

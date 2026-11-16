@@ -435,7 +435,7 @@ function Shortcut({ toast, handleError }: Shared) {
               <dt>方法</dt><dd>POST</dd>
               <dt>ヘッダ</dt><dd>① と同じ (<code>Authorization</code> ＝ <code>Bearer </code>＋トークン)</dd>
               <dt>本文を要求</dt>
-              <dd>JSON。テキスト項目 <code>text</code> ＝ 変数「ショートカットの入力」の<b>本文</b></dd>
+              <dd>JSON。テキスト項目 <code>text</code> ＝ 変数「ショートカットの入力」の<b>コンテンツ</b></dd>
             </dl>
           </li>
           <li>「<b>辞書の値を取得</b>」(キー <code>message</code>) →「<b>通知を表示</b>」</li>

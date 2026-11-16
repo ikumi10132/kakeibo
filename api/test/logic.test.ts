@@ -91,6 +91,9 @@ test('JCB の利用通知メールから日付・金額・利用先を読む', (
   });
   assert.equal(parseCardMail(JCB_MAIL.replace(/\n/g, '\r\n')).amount, 2060);
   assert.throws(() => parseCardMail('こんにちは'), /金額/);
+  // HTML 形式の本文でも読める
+  const html = '<html><body><p>【ご利用日時(日本時間)】&nbsp;2026/11/16 13:12<br>【ご利用金額】&nbsp;2,060円<br>【ご利用先】&nbsp;<b>ドンドン</b></p></body></html>';
+  assert.deepEqual(parseCardMail(html), { date: '2026-11-16', amount: 2060, merchant: 'ドンドン', card: '' });
 });
 
 test('カード会社のカタカナ表記 (小さいカナが大きい) でもルールに当たる', () => {
