@@ -5,7 +5,7 @@ import type {
 } from 'aws-lambda';
 import * as admin from './admin.js';
 import * as db from './db.js';
-import { categoryLabel, isDate, isMonth, matchRule, normalize, parseAmount, todayJst, yen } from './logic.js';
+import { categoryLabel, isDate, isMonth, matchRule, normalize, parseAmount, parseCardMail, todayJst, yen, type CardMail } from './logic.js';
 import {
   isOpenAdvance,
   PAYMENT_LABELS,
@@ -248,6 +248,65 @@ async function appRoute(event: APIGatewayProxyEventV2WithJWTAuthorizer, uid: str
   }
 }
 
+interface RecordInput {
+  date: string;
+  type: TxType;
+  amount: number;
+  merchant: string;
+  /** 指定されたカテゴリー (「食費 > 外食」のような表示名・名前・id)。空なら店名のルールで決める */
+  category: string;
+  payment: PaymentMethod;
+  memo: string;
+  source: 'shortcut' | 'mail';
+  advance: boolean;
+}
+
+/** ショートカット・メールからの記録。カテゴリーは 1) 指定 2) 店名のルール 3) 未分類のまま未確認 の順で決める */
+async function record(uid: string, r: RecordInput): Promise<ShortcutResult> {
+  const categories = await db.listCategories(uid);
+  let categoryId: string | null = null;
+  let confirmed = false;
+  if (r.category) {
+    const hit = categories.find((c) => categoryLabel(c.id, categories) === r.category || c.name === r.category || c.id === r.category);
+    if (hit) {
+      categoryId = hit.id;
+      confirmed = true;
+    }
+  }
+  if (!categoryId) {
+    const rule = matchRule(r.merchant, await db.listRules(uid));
+    if (rule && categories.some((c) => c.id === rule.categoryId)) {
+      categoryId = rule.categoryId;
+      confirmed = true;
+    }
+  }
+  const tx = await db.createTransaction(uid, {
+    date: r.date,
+    type: r.type,
+    amount: r.amount,
+    categoryId,
+    payment: r.payment,
+    merchant: r.merchant,
+    memo: r.memo,
+    source: r.source,
+    confirmed,
+    advance: r.advance,
+    received: null,
+  });
+  const label = categoryLabel(categoryId, categories);
+  const shop = r.merchant ? ` (${r.merchant})` : '';
+  return {
+    id: tx.id,
+    amount: r.amount,
+    merchant: r.merchant,
+    category: label,
+    confirmed,
+    message: confirmed
+      ? `${yen(r.amount)}${shop} を「${label}」で記録しました`
+      : `${yen(r.amount)}${shop} を記録しました。カテゴリーを確認してください`,
+  };
+}
+
 // ---------- iPhone のショートカットから使う API (トークン認証) ----------
 
 async function shortcutRoute(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyStructuredResultV2> {
@@ -270,61 +329,70 @@ async function shortcutRoute(event: APIGatewayProxyEventV2): Promise<APIGatewayP
 
     case 'POST /shortcut/transactions': {
       const b = parseBody(event);
-      const categories = await db.listCategories(uid);
       let amount: number;
       try {
         amount = parseAmount(b.amount);
       } catch (e) {
         throw new HttpError(400, (e as Error).message);
       }
-      const merchant = str(b.merchant);
       const card = str(b.card, 50);
       const type = txType(b.type);
+      return json(
+        201,
+        await record(uid, {
+          date: isDate(b.date) ? b.date : todayJst(),
+          type,
+          amount,
+          merchant: str(b.merchant),
+          category: str(b.category),
+          payment: payment(b.payment, card ? 'applepay' : 'other'),
+          memo: str(b.memo, 300) || card,
+          source: 'shortcut',
+          advance: type === 'expense' && isTrue(b.advance),
+        }),
+      );
+    }
 
-      // カテゴリーの決め方: 1) 指定があればそれ (手入力) 2) 店名のルール 3) 未分類のまま未確認にする
-      let categoryId: string | null = null;
-      let confirmed = false;
-      const wanted = str(b.category);
-      if (wanted) {
-        const hit = categories.find((c) => categoryLabel(c.id, categories) === wanted || c.name === wanted || c.id === wanted);
-        if (hit) {
-          categoryId = hit.id;
-          confirmed = true;
-        }
+    // カード会社の利用通知メール (iPhone の「メール」オートメーションから本文を送る)
+    case 'POST /shortcut/mail': {
+      const b = parseBody(event);
+      const text = typeof b.text === 'string' ? b.text.slice(0, 20_000) : '';
+      if (!text.trim()) throw new HttpError(400, 'メールの本文 (text) がありません');
+      let mail: CardMail;
+      try {
+        mail = parseCardMail(text);
+      } catch (e) {
+        throw new HttpError(400, (e as Error).message);
       }
-      if (!categoryId) {
-        const rule = matchRule(merchant, await db.listRules(uid));
-        if (rule && categories.some((c) => c.id === rule.categoryId)) {
-          categoryId = rule.categoryId;
-          confirmed = true;
-        }
+      // 同じメールが 2 回届いた・オートメーションが 2 回動いたときに二重に記録しない
+      const same = (await db.listTransactions(uid, mail.date.slice(0, 7))).find(
+        (t) => t.source === 'mail' && t.date === mail.date && t.amount === mail.amount && t.merchant === mail.merchant,
+      );
+      if (same) {
+        const result: ShortcutResult = {
+          id: same.id,
+          amount: same.amount,
+          merchant: same.merchant,
+          category: categoryLabel(same.categoryId, await db.listCategories(uid)),
+          confirmed: same.confirmed,
+          message: `${yen(same.amount)} (${same.merchant}) は記録済みです`,
+        };
+        return json(200, result);
       }
-
-      const tx = await db.createTransaction(uid, {
-        date: isDate(b.date) ? b.date : todayJst(),
-        type,
-        amount,
-        categoryId,
-        payment: payment(b.payment, card ? 'applepay' : 'other'),
-        merchant,
-        memo: str(b.memo, 300) || (card ? card : ''),
-        source: 'shortcut',
-        confirmed,
-        advance: type === 'expense' && isTrue(b.advance),
-        received: null,
-      });
-      const label = categoryLabel(categoryId, categories);
-      const result: ShortcutResult = {
-        id: tx.id,
-        amount,
-        merchant,
-        category: label,
-        confirmed,
-        message: confirmed
-          ? `${yen(amount)}${merchant ? ` (${merchant})` : ''} を「${label}」で記録しました`
-          : `${yen(amount)}${merchant ? ` (${merchant})` : ''} を記録しました。カテゴリーを確認してください`,
-      };
-      return json(201, result);
+      return json(
+        201,
+        await record(uid, {
+          date: mail.date,
+          type: 'expense',
+          amount: mail.amount,
+          merchant: mail.merchant,
+          category: '',
+          payment: 'card',
+          memo: mail.card,
+          source: 'mail',
+          advance: false,
+        }),
+      );
     }
 
     default:

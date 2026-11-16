@@ -26,9 +26,53 @@ export function parseAmount(raw: unknown): number {
   return n;
 }
 
-/** 比較用に店名をそろえる (全角半角・大文字小文字・空白の違いを無視) */
+const SMALL_KANA: Record<string, string> = {
+  ァ: 'ア', ィ: 'イ', ゥ: 'ウ', ェ: 'エ', ォ: 'オ', ッ: 'ツ', ャ: 'ヤ', ュ: 'ユ', ョ: 'ヨ', ヮ: 'ワ', ヵ: 'カ', ヶ: 'ケ',
+};
+
+/**
+ * 比較用に店名をそろえる (全角半角・大文字小文字・空白の違いを無視)。
+ * カード会社の通知は「スターバツクス」のように小さいカナを大きく書くので、小さいカナも大きくそろえる。
+ * ひらがなはカタカナにそろえる
+ */
 export function normalize(s: string): string {
-  return s.normalize('NFKC').toLowerCase().replace(/\s+/g, '');
+  return s
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\u3041-\u3096]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60))
+    .replace(/[ァィゥェォッャュョヮヵヶ]/g, (c) => SMALL_KANA[c] ?? c)
+    .replace(/\s+/g, '');
+}
+
+export interface CardMail {
+  date: string;
+  amount: number;
+  merchant: string;
+  card: string;
+}
+
+/**
+ * カード会社の利用通知メールの本文から、日付・金額・利用先を読み取る。
+ * JCB の「カードご利用通知」の形式 (【ご利用日時(日本時間)】 2026/11/16 13:12 / 【ご利用金額】 2,060円 / 【ご利用先】 …) に対応。
+ * 似た書き方 (ご利用日・利用金額・ご利用店名 など) も読む
+ */
+export function parseCardMail(raw: string): CardMail {
+  const text = raw.normalize('NFKC').replace(/\r/g, '');
+  const line = (re: RegExp) => text.match(re)?.[1]?.trim() ?? '';
+  const label = (names: string) => new RegExp(`(?:【|\\[|■|・)?\\s*(?:ご)?(?:${names})[^】\\]:：\\n]*(?:】|\\]|:|：)?[ \\t]*([^\\n]+)`);
+
+  const dateText = line(label('利用日時|利用日'));
+  const d = dateText.match(/(\d{4})[/年-](\d{1,2})[/月-](\d{1,2})/);
+  const amountText = line(label('利用金額'));
+  const a = amountText.match(/([\d,]+)\s*円/) ?? amountText.match(/[¥￥]\s*([\d,]+)/);
+  const merchant = line(label('利用先|利用店名|ご利用店|加盟店名')).replace(/\s+/g, ' ');
+  const card = line(/カード名称\s*[:：]\s*([^\n]+)/);
+
+  if (!a) throw new Error('メールから金額を読み取れませんでした');
+  const amount = Number(a[1]!.replace(/,/g, ''));
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('メールの金額が不正です');
+  const date = d ? `${d[1]}-${d[2]!.padStart(2, '0')}-${d[3]!.padStart(2, '0')}` : todayJst();
+  return { date: isDate(date) ? date : todayJst(), amount, merchant, card };
 }
 
 /** 店名に一致するルールのうち、キーワードが最も長いものを返す */

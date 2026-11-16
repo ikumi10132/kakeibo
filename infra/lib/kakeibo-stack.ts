@@ -217,6 +217,7 @@ export class KakeiboStack extends cdk.Stack {
     const none = new apigw.HttpNoneAuthorizer();
     api.addRoutes({ path: '/shortcut/transactions', methods: [POST], integration, authorizer: none });
     api.addRoutes({ path: '/shortcut/categories', methods: [GET], integration, authorizer: none });
+    api.addRoutes({ path: '/shortcut/mail', methods: [POST], integration, authorizer: none });
 
     const stage = api.defaultStage?.node.defaultChild as apigw.CfnStage;
     stage.defaultRouteSettings = { throttlingBurstLimit: 20, throttlingRateLimit: 10 };

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { defaultCategories, defaultRules } from '../src/defaults.js';
-import { categoryLabel, isDate, matchRule, parseAmount, todayJst } from '../src/logic.js';
+import { categoryLabel, isDate, matchRule, normalize, parseAmount, parseCardMail, todayJst } from '../src/logic.js';
 import { groupsFromClaim } from '../src/admin.js';
 import { isOpenAdvance, ownAmount, type Rule } from '../src/types.js';
 
@@ -67,4 +67,35 @@ test('JWT の cognito:groups はさまざまな形で届く', () => {
   assert.deepEqual(groupsFromClaim('[admin other]'), ['admin', 'other']);
   assert.deepEqual(groupsFromClaim('["admin","x"]'), ['admin', 'x']);
   assert.deepEqual(groupsFromClaim(undefined), []);
+});
+
+const JCB_MAIL = `作本　育海 様
+カード名称　：　ＡＮＡＪＣＢワイドゴールドカード
+
+JCBカードのご利用がありましたのでご連絡します。
+
+【ご利用日時(日本時間)】　2026/11/16 13:12
+【ご利用金額】　2,060円
+【ご利用先】　ドンドン　ミナミイワクニテン
+
+▼【ご利用先】について
+　・国内の加盟店の場合、すべてカタカナ表示となります。（例：一休→イツキユウ）
+　　例）Amazonプライム年会費　5,900円　　→　アマゾン　5,900円`;
+
+test('JCB の利用通知メールから日付・金額・利用先を読む', () => {
+  assert.deepEqual(parseCardMail(JCB_MAIL), {
+    date: '2026-11-16',
+    amount: 2060,
+    merchant: 'ドンドン ミナミイワクニテン',
+    card: 'ANAJCBワイドゴールドカード',
+  });
+  assert.equal(parseCardMail(JCB_MAIL.replace(/\n/g, '\r\n')).amount, 2060);
+  assert.throws(() => parseCardMail('こんにちは'), /金額/);
+});
+
+test('カード会社のカタカナ表記 (小さいカナが大きい) でもルールに当たる', () => {
+  assert.equal(normalize('スターバツクス'), normalize('スターバックス'));
+  assert.equal(normalize('せぶん'), normalize('セブン'));
+  const rules = [{ id: '1', keyword: 'スターバックス', categoryId: 'food-cafe', auto: false }];
+  assert.equal(matchRule('スターバツクス コーヒー シブヤテン', rules)?.id, '1');
 });

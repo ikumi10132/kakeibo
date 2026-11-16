@@ -37,7 +37,8 @@ export interface Transaction {
   payment: PaymentMethod;
   merchant: string;
   memo: string;
-  source: 'manual' | 'shortcut';
+  /** shortcut: Apple Pay などショートカット、mail: カード会社の利用通知メール */
+  source: 'manual' | 'shortcut' | 'mail';
   /** ショートカットからの自動登録はカテゴリーを確認するまで false */
   confirmed: boolean;
   /** 立て替え (あとで他の人からお金を受け取る支出)。古いデータには無いので未定義は false 扱い */

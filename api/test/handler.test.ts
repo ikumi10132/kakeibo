@@ -243,3 +243,21 @@ test('管理者 API は admin グループのときだけ使える', async () =>
   } as unknown as APIGatewayProxyEventV2);
   assert.equal((self as APIGatewayProxyStructuredResultV2).statusCode, 400); // 自分自身は削除できない
 });
+
+test('カード会社の利用通知メールを記録し、同じメールは二重に記録しない', async () => {
+  const token = await issueToken();
+  const text = '【ご利用日時(日本時間)】　2026/11/16 13:12\n【ご利用金額】　2,060円\n【ご利用先】　スターバツクス　シブヤテン';
+  const first = await call<ShortcutResult>('POST /shortcut/mail', { token, user: null, body: { text } });
+  assert.equal(first.status, 201);
+  assert.equal(first.body.amount, 2060);
+  assert.equal(first.body.category, '食費 > カフェ'); // 既定のルール「スターバックス」に当たる
+  const again = await call<ShortcutResult>('POST /shortcut/mail', { token, user: null, body: { text } });
+  assert.equal(again.status, 200);
+  assert.match(again.body.message, /記録済み/);
+  const month = await call<Transaction[]>('GET /transactions', { query: { month: '2026-11' } });
+  assert.equal(month.body.filter((t) => t.source === 'mail').length, 1);
+  assert.equal(month.body[0]!.payment, 'card');
+
+  assert.equal((await call('POST /shortcut/mail', { token, user: null, body: { text: 'hello' } })).status, 400);
+  assert.equal((await call('POST /shortcut/mail', { user: null, body: { text } })).status, 401);
+});

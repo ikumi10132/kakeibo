@@ -417,6 +417,31 @@ function Shortcut({ toast, handleError }: Shared) {
         </ol>
         <p className="muted small">ホーム画面に追加するか、設定 → アクセシビリティ → タッチ → 背面タップ に割り当てると便利です。</p>
       </section>
+
+      <section className="card guide">
+        <h2 className="card-title">③ カードの利用通知メールから自動で記録</h2>
+        <p className="muted small">
+          ウォレットに取引が表示されないカード (JCB の QUICPay など) は ① が動きません。
+          カード会社の「カードご利用通知」メールを iPhone の「メール」アプリで受け取っていれば、届いたときに自動で記録できます (JCB の形式に対応)。
+        </p>
+        <ol>
+          <li>カード会社の会員サイトで、利用通知メールを受け取る設定にする (JCB は MyJCB →「My安心設定」→ カード利用関連の通知)</li>
+          <li>ショートカットアプリ →「オートメーション」→「＋」→「<b>メール</b>」</li>
+          <li>「差出人」にカード会社の通知メールのアドレスを選び (件名で絞る場合は「件名に次を含む」に「ご利用」など)、「<b>すぐに実行</b>」にして「次へ」→「新規の空のショートカット」</li>
+          <li>アクション「<b>URLの内容を取得</b>」を追加
+            <dl className="kv">
+              <dt>URL</dt>
+              <dd><code className="code">{apiUrl}/shortcut/mail</code> <button className="btn btn-small" onClick={() => void copy(`${apiUrl}/shortcut/mail`)}>コピー</button></dd>
+              <dt>方法</dt><dd>POST</dd>
+              <dt>ヘッダ</dt><dd>① と同じ (<code>Authorization</code> ＝ <code>Bearer </code>＋トークン)</dd>
+              <dt>本文を要求</dt>
+              <dd>JSON。テキスト項目 <code>text</code> ＝ 変数「ショートカットの入力」の<b>本文</b></dd>
+            </dl>
+          </li>
+          <li>「<b>辞書の値を取得</b>」(キー <code>message</code>) →「<b>通知を表示</b>」</li>
+        </ol>
+        <p className="muted small">店名はカタカナで届きます (例: スターバツクス)。振り分けルールは小さい「ッ」なども同じとみなして比べます。同じメールで二重に記録されることはありません。</p>
+      </section>
     </>
   );
 }
