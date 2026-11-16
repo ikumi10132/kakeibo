@@ -3,7 +3,8 @@ import { PAYMENT_LABELS, PAYMENT_METHODS, type PaymentMethod, type Transaction, 
 import { api } from '../api';
 import type { Shared } from '../App';
 import { todayJst, yen } from '../util';
-import { CategorySelect } from './CategorySelect';
+import { CategoryPicker } from './CategoryPicker';
+import { sourceLabel } from './TxRow';
 
 interface Props extends Shared {
   tx?: Transaction;
@@ -71,7 +72,7 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
         <div className="sheet-head">
           <button type="button" className="btn btn-ghost btn-small" onClick={onClose}>閉じる</button>
           <h2>{tx ? '明細の編集' : '記録する'}</h2>
-          <button type="submit" className="btn btn-primary btn-small" disabled={busy}>保存</button>
+          <span />
         </div>
 
         <div className="segmented" role="group" aria-label="収支">
@@ -97,10 +98,7 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
           </div>
         </label>
 
-        <label className="field">
-          <span>カテゴリー</span>
-          <CategorySelect categories={categories} type={type} value={categoryId} onChange={setCategoryId} allowNone />
-        </label>
+        <CategoryPicker categories={categories} type={type} value={categoryId} onChange={setCategoryId} />
 
         <div className="field-row">
           <label className="field">
@@ -159,12 +157,15 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
           <input className="input" value={memo} onChange={(e) => setMemo(e.target.value)} maxLength={300} />
         </label>
 
-        {tx?.source === 'shortcut' && <p className="muted small">iPhone のショートカットから記録された明細です</p>}
+        {tx && tx.source !== 'manual' && <p className="muted small">記録元: {sourceLabel(tx)}</p>}
         {tx && (
           <button type="button" className="btn btn-danger" onClick={() => void remove()} disabled={busy}>
             この明細を削除
           </button>
         )}
+        <div className="sheet-foot">
+          <button type="submit" className="btn btn-primary btn-block btn-large" disabled={busy}>保存する</button>
+        </div>
       </form>
     </div>
   );

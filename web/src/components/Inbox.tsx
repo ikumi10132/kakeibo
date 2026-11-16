@@ -12,13 +12,15 @@ interface Props extends Shared {
 export function Inbox({ txs, categories, changed, toast, handleError, edit }: Props) {
   return (
     <>
-      <h1 className="page-title">未確認の明細</h1>
-      <p className="muted small">
-        ショートカットで記録したもののうち、店名からカテゴリーを決められなかった明細です。
+      <header className="page-head">
+        <h1 className="page-title">未確認の明細</h1>
+      </header>
+      <p className="muted">
+        Apple Pay や利用通知メールから自動で記録したもののうち、店名からカテゴリーを決められなかった明細です。
         カテゴリーを選ぶと、次からその店は自動で振り分けられます。
       </p>
       {!txs && <p className="muted center-text">読み込み中…</p>}
-      {txs?.length === 0 && <p className="muted center-text">すべて確認済みです 🎉</p>}
+      {txs?.length === 0 && <p className="muted center-text">すべて確認済みです</p>}
       <ul className="inbox">
         {txs?.map((t) => (
           <InboxItem key={t.id} tx={t} {...{ categories, changed, toast, handleError, edit }} />
@@ -28,7 +30,7 @@ export function Inbox({ txs, categories, changed, toast, handleError, edit }: Pr
   );
 }
 
-function InboxItem({ tx, categories, changed, toast, handleError, edit }: Pick<Shared, 'categories' | 'changed' | 'toast' | 'handleError' | 'edit'> & { tx: Transaction }) {
+export function InboxItem({ tx, categories, changed, toast, handleError, edit }: Pick<Shared, 'categories' | 'changed' | 'toast' | 'handleError' | 'edit'> & { tx: Transaction }) {
   const [categoryId, setCategoryId] = useState<string | null>(tx.categoryId);
   const [busy, setBusy] = useState(false);
 

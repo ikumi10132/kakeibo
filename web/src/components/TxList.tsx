@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Transaction } from '../../../api/src/types';
 import type { Shared } from '../App';
 import { categoryLabel, dateLabel, dayExpense, shortYen, todayJst, yen } from '../util';
+import { IconPlus } from './Icons';
 import { MonthNav } from './MonthNav';
 import { TxRow } from './TxRow';
 
@@ -46,7 +47,14 @@ export function TxList({ month, setMonth, txs, categories, edit }: Props) {
 
   return (
     <>
-      <MonthNav month={month} setMonth={changeMonth} />
+      <header className="page-head">
+        <MonthNav month={month} setMonth={changeMonth} />
+        <div className="head-actions pc-only">
+          <button className="btn btn-primary" onClick={() => edit()}>
+            <IconPlus /> 記録する
+          </button>
+        </div>
+      </header>
       <div className="segmented" role="group" aria-label="表示の切り替え">
         {([
           ['list', 'リスト'],

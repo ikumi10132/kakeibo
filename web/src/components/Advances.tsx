@@ -4,6 +4,27 @@ import { api } from '../api';
 import type { Shared } from '../App';
 import { dateLabel, yen } from '../util';
 
+/** 立て替えの画面 */
+export function AdvancesPage({ txs, ...shared }: Shared & { txs: Transaction[] }) {
+  return (
+    <>
+      <header className="page-head">
+        <h1 className="page-title">立て替え</h1>
+      </header>
+      <p className="muted">
+        支払うときに入力画面で「立て替え」をオンにした明細です。受け取ったら金額を入れて「精算」すると、差額だけが自分の支出になります。
+      </p>
+      {txs.length === 0 ? (
+        <section className="card">
+          <p className="muted center-text">未精算の立て替えはありません</p>
+        </section>
+      ) : (
+        <Advances {...shared} txs={txs} />
+      )}
+    </>
+  );
+}
+
 /** 未精算の立て替え。受け取った額を入れて精算する */
 export function Advances({ txs, ...shared }: Shared & { txs: Transaction[] }) {
   if (txs.length === 0) return null;

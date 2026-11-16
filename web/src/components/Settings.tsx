@@ -14,7 +14,9 @@ export function Settings(props: Shared) {
   const [section, setSection] = useState<Section>('categories');
   return (
     <>
-      <h1 className="page-title">設定</h1>
+      <header className="page-head">
+        <h1 className="page-title">設定</h1>
+      </header>
       <div className="segmented" role="tablist">
         {([
           ['categories', 'カテゴリー'],
@@ -31,7 +33,7 @@ export function Settings(props: Shared) {
       {section === 'rules' && <Rules {...props} />}
       {section === 'shortcut' && <Shortcut {...props} />}
       {section === 'users' && isAdmin() && <AdminUsers {...props} />}
-      <button className="btn btn-ghost" onClick={logout}>ログアウト</button>
+      <button className="btn btn-ghost phone-only" onClick={logout}>ログアウト</button>
     </>
   );
 }

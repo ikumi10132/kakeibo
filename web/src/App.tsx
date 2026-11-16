@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import type { Category, Transaction } from '../../api/src/types';
 import { api, AuthError } from './api';
-import { handleRedirect, isLoggedIn, login } from './auth';
+import { handleRedirect, isLoggedIn, login, logout } from './auth';
+import { AdvancesPage } from './components/Advances';
+import { Export } from './components/Export';
 import { Home } from './components/Home';
+import { IconChart, IconGear, IconHome, IconInbox, IconList, IconLogout, IconPlus, IconSwap } from './components/Icons';
 import { Inbox } from './components/Inbox';
 import { Settings } from './components/Settings';
 import { TxForm } from './components/TxForm';
@@ -48,12 +51,21 @@ export function App() {
   return <Main onAuthError={() => setPhase({ name: 'login' })} />;
 }
 
-type Tab = 'home' | 'list' | 'inbox' | 'settings';
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'home', label: 'ホーム', icon: '🏠' },
-  { id: 'list', label: '明細', icon: '📋' },
-  { id: 'inbox', label: '未確認', icon: '📥' },
-  { id: 'settings', label: '設定', icon: '⚙️' },
+export type Tab = 'home' | 'list' | 'inbox' | 'advances' | 'export' | 'settings';
+
+interface NavItem {
+  id: Tab;
+  label: string;
+  icon: ReactNode;
+}
+
+/** PC の左メニュー */
+const SIDE_NAV: NavItem[] = [
+  { id: 'home', label: 'ホーム', icon: <IconHome /> },
+  { id: 'list', label: '明細・カレンダー', icon: <IconList /> },
+  { id: 'inbox', label: '未確認', icon: <IconInbox /> },
+  { id: 'advances', label: '立て替え', icon: <IconSwap /> },
+  { id: 'export', label: 'AI 分析用の書き出し', icon: <IconChart /> },
 ];
 
 export type Editing = { tx?: Transaction } | null;
@@ -66,6 +78,8 @@ export interface Shared {
   edit: (tx?: Transaction) => void;
   toast: (text: string, error?: boolean) => void;
   handleError: (e: unknown) => void;
+  /** 画面を切り替える */
+  go: (tab: Tab) => void;
 }
 
 function Main({ onAuthError }: { onAuthError: () => void }) {
@@ -125,6 +139,11 @@ function Main({ onAuthError }: { onAuthError: () => void }) {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
 
+  const go = useCallback((t: Tab) => {
+    setTab(t);
+    window.scrollTo({ top: 0 });
+  }, []);
+
   if (!categories) return <div className="center muted">読み込み中…</div>;
 
   const shared: Shared = {
@@ -134,30 +153,87 @@ function Main({ onAuthError }: { onAuthError: () => void }) {
     edit: (tx) => setEditing({ tx }),
     toast,
     handleError,
+    go,
   };
   const inboxCount = unconfirmed?.length ?? 0;
+  const badge = (id: Tab) =>
+    id === 'inbox' && inboxCount > 0 ? <span className="badge" aria-label={`${inboxCount} 件`}>{inboxCount}</span> : null;
 
   return (
-    <div className="app">
-      <main className="content">
+    <div className="shell">
+      <aside className="sidebar" aria-label="メインメニュー">
+        <div className="brand">
+          <img src="/icon.svg" alt="" width={36} height={36} />
+          <span className="brand-text">
+            <strong>家計簿</strong>
+            <span className="muted small">{location.host}</span>
+          </span>
+        </div>
+        <button className="btn btn-primary btn-block" onClick={() => setEditing({})}>
+          <IconPlus /> 記録する
+        </button>
+        <nav>
+          <ul className="side-nav">
+            {SIDE_NAV.map((n) => (
+              <li key={n.id}>
+                <button className={tab === n.id ? 'active' : ''} aria-current={tab === n.id ? 'page' : undefined} onClick={() => go(n.id)}>
+                  {n.icon}
+                  <span className="grow">{n.label}</span>
+                  {badge(n.id)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <ul className="side-nav side-foot">
+          <li>
+            <button className={tab === 'settings' ? 'active' : ''} aria-current={tab === 'settings' ? 'page' : undefined} onClick={() => go('settings')}>
+              <IconGear />
+              <span className="grow">設定</span>
+            </button>
+          </li>
+          <li>
+            <button onClick={logout}>
+              <IconLogout />
+              <span className="grow">ログアウト</span>
+            </button>
+          </li>
+        </ul>
+      </aside>
+
+      <main className="main">
         {tab === 'home' && (
-          <Home {...shared} month={month} setMonth={setMonth} txs={txs} advances={advances} inboxCount={inboxCount} openInbox={() => setTab('inbox')} />
+          <Home {...shared} month={month} setMonth={setMonth} txs={txs} advances={advances} unconfirmed={unconfirmed ?? []} />
         )}
         {tab === 'list' && <TxList {...shared} month={month} setMonth={setMonth} txs={txs} />}
         {tab === 'inbox' && <Inbox {...shared} txs={unconfirmed} />}
+        {tab === 'advances' && <AdvancesPage {...shared} txs={advances} />}
+        {tab === 'export' && <Export {...shared} month={month} />}
         {tab === 'settings' && <Settings {...shared} />}
       </main>
 
-      {tab !== 'settings' && (
-        <button className="fab" aria-label="記録する" onClick={() => setEditing({})}>＋</button>
-      )}
-
+      {/* スマホの下のタブ (真ん中が「記録する」) */}
       <nav className="tabbar" aria-label="画面の切り替え">
-        {TABS.map((t) => (
-          <button key={t.id} className={tab === t.id ? 'active' : ''} aria-current={tab === t.id} onClick={() => setTab(t.id)}>
-            <span className="tab-icon" aria-hidden>{t.icon}</span>
-            <span>{t.label}</span>
-            {t.id === 'inbox' && inboxCount > 0 && <span className="badge">{inboxCount}</span>}
+        {([
+          { id: 'home', label: 'ホーム', icon: <IconHome size={24} /> },
+          { id: 'list', label: '明細', icon: <IconList size={24} /> },
+        ] as NavItem[]).map((n) => (
+          <button key={n.id} className={tab === n.id ? 'active' : ''} aria-current={tab === n.id ? 'page' : undefined} onClick={() => go(n.id)}>
+            {n.icon}
+            <span>{n.label}</span>
+          </button>
+        ))}
+        <button className="tab-add" aria-label="記録する" onClick={() => setEditing({})}>
+          <IconPlus size={28} />
+        </button>
+        {([
+          { id: 'inbox', label: '未確認', icon: <IconInbox size={24} /> },
+          { id: 'settings', label: '設定', icon: <IconGear size={24} /> },
+        ] as NavItem[]).map((n) => (
+          <button key={n.id} className={tab === n.id ? 'active' : ''} aria-current={tab === n.id ? 'page' : undefined} onClick={() => go(n.id)}>
+            {n.icon}
+            <span>{n.label}</span>
+            {badge(n.id)}
           </button>
         ))}
       </nav>
