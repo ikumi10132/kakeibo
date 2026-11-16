@@ -258,6 +258,16 @@ test('カード会社の利用通知メールを記録し、同じメールは�
   assert.equal(month.body.filter((t) => t.source === 'mail').length, 1);
   assert.equal(month.body[0]!.payment, 'card');
 
-  assert.equal((await call('POST /shortcut/mail', { token, user: null, body: { text: 'hello' } })).status, 400);
+  const notUsage = await call<{ message: string }>('POST /shortcut/mail', { token, user: null, body: { text: 'キャンペーンのお知らせ' } });
+  assert.equal(notUsage.status, 200);
+  assert.match(notUsage.body.message, /記録しませんでした/);
+  assert.equal((await call('POST /shortcut/mail', { token, user: null, body: {} })).status, 400);
+  // 項目名が message でも受け付ける
+  const byMessage = await call<ShortcutResult>('POST /shortcut/mail', {
+    token,
+    user: null,
+    body: { message: text.replace('2,060', '980') },
+  });
+  assert.equal(byMessage.body.amount, 980);
   assert.equal((await call('POST /shortcut/mail', { user: null, body: { text } })).status, 401);
 });

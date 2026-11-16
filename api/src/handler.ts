@@ -356,13 +356,16 @@ async function shortcutRoute(event: APIGatewayProxyEventV2): Promise<APIGatewayP
     // カード会社の利用通知メール (iPhone の「メール」オートメーションから本文を送る)
     case 'POST /shortcut/mail': {
       const b = parseBody(event);
-      const text = typeof b.text === 'string' ? b.text.slice(0, 20_000) : '';
-      if (!text.trim()) throw new HttpError(400, 'メールの本文 (text) がありません');
+      // ショートカットで項目名を間違えやすいので、text 以外の名前でも受け付ける
+      const raw = [b.text, b.content, b.body, b.message].find((v) => typeof v === 'string' && v.trim());
+      const text = typeof raw === 'string' ? raw.slice(0, 50_000) : '';
+      if (!text) throw new HttpError(400, 'メールの本文がありません。「本文を要求」の項目名を text、値を「コンテンツ」にしてください');
       let mail: CardMail;
       try {
         mail = parseCardMail(text);
-      } catch (e) {
-        throw new HttpError(400, (e as Error).message);
+      } catch {
+        // お知らせなど利用通知ではないメールでもオートメーションは動くので、エラーにせず何もしない
+        return json(200, { message: 'カードの利用通知ではないため、記録しませんでした' });
       }
       // 同じメールが 2 回届いた・オートメーションが 2 回動いたときに二重に記録しない
       const same = (await db.listTransactions(uid, mail.date.slice(0, 7))).find(
