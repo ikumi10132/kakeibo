@@ -3,9 +3,8 @@ import type { Category, Transaction } from '../../api/src/types';
 import { api, AuthError } from './api';
 import { handleRedirect, isLoggedIn, login, logout } from './auth';
 import { AdvancesPage } from './components/Advances';
-import { Export } from './components/Export';
 import { Home } from './components/Home';
-import { IconChart, IconGear, IconHome, IconInbox, IconList, IconLogout, IconPlus, IconSwap } from './components/Icons';
+import { IconGear, IconHome, IconInbox, IconList, IconLogout, IconPlus, IconSwap } from './components/Icons';
 import { Inbox } from './components/Inbox';
 import { Settings } from './components/Settings';
 import { TxForm } from './components/TxForm';
@@ -51,7 +50,7 @@ export function App() {
   return <Main onAuthError={() => setPhase({ name: 'login' })} />;
 }
 
-export type Tab = 'home' | 'list' | 'inbox' | 'advances' | 'export' | 'settings';
+export type Tab = 'home' | 'list' | 'inbox' | 'advances' | 'settings';
 
 interface NavItem {
   id: Tab;
@@ -65,7 +64,6 @@ const SIDE_NAV: NavItem[] = [
   { id: 'list', label: '明細・カレンダー', icon: <IconList /> },
   { id: 'inbox', label: '未確認', icon: <IconInbox /> },
   { id: 'advances', label: '立て替え', icon: <IconSwap /> },
-  { id: 'export', label: 'AI 分析用の書き出し', icon: <IconChart /> },
 ];
 
 export type Editing = { tx?: Transaction } | null;
@@ -144,6 +142,14 @@ function Main({ onAuthError }: { onAuthError: () => void }) {
     window.scrollTo({ top: 0 });
   }, []);
 
+  // 「記録する」: ホームでは画面内のフォームへ移動、ほかの画面では下から出るシートを開く
+  const add = () => {
+    const form = tab === 'home' ? document.getElementById('quick-form') : null;
+    if (!form) return setEditing({});
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    window.setTimeout(() => form.querySelector<HTMLInputElement>('.amount-input input')?.focus({ preventScroll: true }), 350);
+  };
+
   if (!categories) return <div className="center muted">読み込み中…</div>;
 
   const shared: Shared = {
@@ -169,7 +175,7 @@ function Main({ onAuthError }: { onAuthError: () => void }) {
             <span className="muted small">{location.host}</span>
           </span>
         </div>
-        <button className="btn btn-primary btn-block" onClick={() => setEditing({})}>
+        <button className="btn btn-primary btn-block" onClick={add}>
           <IconPlus /> 記録する
         </button>
         <nav>
@@ -208,8 +214,7 @@ function Main({ onAuthError }: { onAuthError: () => void }) {
         {tab === 'list' && <TxList {...shared} month={month} setMonth={setMonth} txs={txs} />}
         {tab === 'inbox' && <Inbox {...shared} txs={unconfirmed} />}
         {tab === 'advances' && <AdvancesPage {...shared} txs={advances} />}
-        {tab === 'export' && <Export {...shared} month={month} />}
-        {tab === 'settings' && <Settings {...shared} />}
+        {tab === 'settings' && <Settings {...shared} month={month} />}
       </main>
 
       {/* スマホの下のタブ (真ん中が「記録する」) */}
@@ -223,7 +228,7 @@ function Main({ onAuthError }: { onAuthError: () => void }) {
             <span>{n.label}</span>
           </button>
         ))}
-        <button className="tab-add" aria-label="記録する" onClick={() => setEditing({})}>
+        <button className="tab-add" aria-label="記録する" onClick={add}>
           <IconPlus size={28} />
         </button>
         {([

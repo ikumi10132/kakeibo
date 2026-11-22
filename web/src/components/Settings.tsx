@@ -6,21 +6,23 @@ import { isAdmin, logout } from '../auth';
 import { getConfig } from '../config';
 import { categoryLabel, orderedCategories } from '../util';
 import { CategorySelect } from './CategorySelect';
+import { Export } from './Export';
 
-type Section = 'categories' | 'rules' | 'shortcut';
+type Section = 'categories' | 'rules' | 'shortcut' | 'export';
 
-export function Settings(props: Shared) {
+export function Settings({ month, ...props }: Shared & { month: string }) {
   const [section, setSection] = useState<Section>('categories');
   return (
     <>
       <header className="page-head">
         <h1 className="page-title">設定</h1>
       </header>
-      <div className="segmented" role="tablist">
+      <div className="segmented seg-grid" role="tablist">
         {([
           ['categories', 'カテゴリー'],
           ['rules', '振り分け'],
           ['shortcut', 'ショートカット'],
+          ['export', 'AI 書き出し'],
         ] as const).map(([id, label]) => (
           <button key={id} role="tab" aria-selected={section === id} className={section === id ? 'active' : ''} onClick={() => setSection(id)}>
             {label}
@@ -30,6 +32,7 @@ export function Settings(props: Shared) {
       {section === 'categories' && <Categories {...props} />}
       {section === 'rules' && <Rules {...props} />}
       {section === 'shortcut' && <Shortcut {...props} />}
+      {section === 'export' && <Export {...props} month={month} embedded />}
       {isAdmin() && (
         <section className="card">
           <h2 className="card-title">ユーザー管理</h2>

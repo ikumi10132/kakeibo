@@ -66,7 +66,8 @@ export function buildSummary(byMonth: { month: string; txs: Transaction[] }[], c
   return lines.join('\n');
 }
 
-export function Export({ categories, handleError, toast, month }: Shared & { month: string }) {
+/** embedded: 設定の中に表示する (ページの見出しを出さない) */
+export function Export({ categories, handleError, toast, month, embedded }: Shared & { month: string; embedded?: boolean }) {
   const [range, setRange] = useState<number>(3);
   const [text, setText] = useState<string | null>(null);
 
@@ -98,9 +99,11 @@ export function Export({ categories, handleError, toast, month }: Shared & { mon
 
   return (
     <>
-      <header className="page-head">
-        <h1 className="page-title">AI 分析用の書き出し</h1>
-      </header>
+      {!embedded && (
+        <header className="page-head">
+          <h1 className="page-title">AI 分析用の書き出し</h1>
+        </header>
+      )}
       <p className="muted">
         集計を文章にまとめます。コピーして Claude に貼り付け、「目標達成のための改善点は？」などと聞いてください。
         {monthLabel(month)} を最新の月として集計します (月はホームや明細で切り替えられます)。

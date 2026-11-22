@@ -12,9 +12,11 @@ interface Props extends Shared {
   tx?: Transaction;
   onClose: () => void;
   onSaved: (message: string) => void;
+  /** ホーム画面に埋め込む (下から出るシートではなくカードとして表示し、保存後は空に戻す) */
+  inline?: boolean;
 }
 
-export function TxForm({ tx, categories, onClose, onSaved, handleError, changed, toast }: Props) {
+export function TxForm({ tx, categories, onClose, onSaved, handleError, changed, toast, inline }: Props) {
   const [type, setType] = useState<TxType>(tx?.type ?? 'expense');
   const [amount, setAmount] = useState(tx ? String(tx.amount) : '');
   const [date, setDate] = useState(tx?.date ?? todayJst());
@@ -68,14 +70,8 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
     }
   };
 
-  return (
-    <div className="sheet-backdrop" onClick={onClose}>
-      <form className="sheet" onClick={(e) => e.stopPropagation()} onSubmit={submit} aria-label="明細の入力">
-        <div className="sheet-head">
-          <button type="button" className="btn btn-ghost btn-small" onClick={onClose}>閉じる</button>
-          <h2>{tx ? '明細の編集' : '記録する'}</h2>
-          <span />
-        </div>
+  const body = (
+    <>
 
         <div className="segmented" role="group" aria-label="収支">
           {(['expense', 'income'] as const).map((t) => (
@@ -92,7 +88,7 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
             <input
               className="input"
               inputMode="numeric"
-              autoFocus={!tx}
+              autoFocus={!tx && !inline}
               placeholder="0"
               value={amount ? Number(amount.replace(/[^\d]/g, '') || 0).toLocaleString('ja-JP') : ''}
               onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ''))}
@@ -170,6 +166,30 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
             この明細を削除
           </button>
         )}
+    </>
+  );
+
+  if (inline) {
+    return (
+      <form id="quick-form" className="card quick-form" onSubmit={submit} aria-label="明細の入力">
+        <h2 className="card-title">記録する</h2>
+        {body}
+        <div className="quick-foot">
+          <button type="submit" className="btn btn-primary btn-block btn-large" disabled={busy}>記録する</button>
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <div className="sheet-backdrop" onClick={onClose}>
+      <form className="sheet" onClick={(e) => e.stopPropagation()} onSubmit={submit} aria-label="明細の入力">
+        <div className="sheet-head">
+          <button type="button" className="btn btn-ghost btn-small" onClick={onClose}>閉じる</button>
+          <h2>{tx ? '明細の編集' : '記録する'}</h2>
+          <span />
+        </div>
+        {body}
         <div className="sheet-foot">
           <button type="submit" className="btn btn-primary btn-block btn-large" disabled={busy}>保存する</button>
         </div>
