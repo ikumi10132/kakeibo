@@ -74,14 +74,15 @@ export function htmlToText(s: string): string {
 export function parseCardMail(raw: string): CardMail {
   const text = htmlToText(raw).normalize('NFKC').replace(/\r/g, '');
   const line = (re: RegExp) => text.match(re)?.[1]?.trim() ?? '';
-  const label = (names: string) => new RegExp(`(?:【|\\[|■|・)?\\s*(?:ご)?(?:${names})[^】\\]:：\\n]*(?:】|\\]|:|：)?[ \\t]*([^\\n]+)`);
+  // 項目名の前の記号はカード会社ごとに違う (JCB: 【ご利用金額】、三井住友カード: ◇利用金額：、など)
+  const label = (names: string) => new RegExp(`(?:【|\\[|■|□|・|◇|◆|★|☆|●|○|◎|▼|▽|＊|\\*)?\\s*(?:ご)?(?:${names})[^】\\]:：\\n]*(?:】|\\]|:|：)?[ \\t]*([^\\n]+)`);
 
   const dateText = line(label('利用日時|利用日'));
   const d = dateText.match(/(\d{4})[/年-](\d{1,2})[/月-](\d{1,2})/);
   const amountText = line(label('利用金額'));
   const a = amountText.match(/([\d,]+)\s*円/) ?? amountText.match(/[¥￥]\s*([\d,]+)/);
-  const merchant = line(label('利用先|利用店名|ご利用店|加盟店名')).replace(/\s+/g, ' ');
-  const card = line(/カード名称\s*[:：]\s*([^\n]+)/);
+  const merchant = line(label('利用先|利用店名|利用店舗|ご利用店|加盟店名')).replace(/\s+/g, ' ');
+  const card = line(/(?:カード名称|ご利用カード|利用カード)\s*[:：]\s*([^\n]+)/);
 
   if (!a) throw new Error('メールから金額を読み取れませんでした');
   const amount = Number(a[1]!.replace(/,/g, ''));

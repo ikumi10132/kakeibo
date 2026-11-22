@@ -76,6 +76,8 @@ W-SSO の情報は wakalabo-apps が SSM パラメータ (`/wakalabo/auth/...`) 
 
 ## Gmail から自動で記録する (カードの利用通知メール)
 
+対応しているカード: JCB、三井住友カード (Vpass の「ご利用のお知らせ」)。
+
 iPhone のメールのオートメーションは、iPhone がメールを受信したときにしか動きません (充電中にまとめて受信されるなど)。
 [`scripts/gmail-to-kakeibo.gs`](scripts/gmail-to-kakeibo.gs) を Google Apps Script で動かすと、Google のサーバーが 5 分ごとに Gmail を確認して家計簿に送ります (無料)。
 

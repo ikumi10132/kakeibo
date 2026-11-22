@@ -104,3 +104,35 @@ test('カード会社のカタカナ表記 (小さいカナが大きい) でも�
   const rules = [{ id: '1', keyword: 'スターバックス', categoryId: 'food-cafe', auto: false }];
   assert.equal(matchRule('スターバツクス コーヒー シブヤテン', rules)?.id, '1');
 });
+
+// 三井住友カード (Vpass) の利用通知メール (氏名などは架空)
+const SMBC_MAIL = `山田　太郎　様
+
+いつも三井住友カードをご利用頂きありがとうございます。
+お客様のカードご利用内容をお知らせいたします。
+
+ご利用カード：三井住友カード（ＮＬ）
+
+◇利用日：2026/11/20 19:05
+◇利用先：セブン－イレブン　渋谷店
+◇利用取引：買物
+◇利用金額：1,280円
+
+ご利用内容の詳細はVpassでご確認ください。`;
+
+test('三井住友カードの利用通知メールから日付・金額・利用先を読む', () => {
+  assert.deepEqual(parseCardMail(SMBC_MAIL), {
+    date: '2026-11-20',
+    amount: 1280,
+    merchant: 'セブン-イレブン 渋谷店',
+    card: '三井住友カード(NL)',
+  });
+  // 記号が違う書き方 (★ / ・) や、項目名に「ご」が付く書き方でも読める
+  const star = SMBC_MAIL.replace(/◇/g, '★').replace('利用金額', 'ご利用金額');
+  assert.equal(parseCardMail(star).amount, 1280);
+  assert.equal(parseCardMail(SMBC_MAIL.replace(/◇/g, '・')).merchant, 'セブン-イレブン 渋谷店');
+  // 「利用取引」は利用先と取り違えない
+  assert.notEqual(parseCardMail(SMBC_MAIL).merchant, '買物');
+  // 外貨だけの利用 (円の金額がない) は記録しない
+  assert.throws(() => parseCardMail(SMBC_MAIL.replace('1,280円', '12.34 USD')), /金額/);
+});

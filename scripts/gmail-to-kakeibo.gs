@@ -16,8 +16,9 @@
 // 家計簿の API (メールの本文を受け取る窓口)
 const API_URL = 'https://4pem86hvbi.execute-api.ap-southeast-2.amazonaws.com/shortcut/mail';
 
-// 対象のメール。カードを増やしたら OR でつなぐ (例: '(from:qa.jcb.co.jp OR from:example.co.jp)')
-const QUERY = 'from:qa.jcb.co.jp subject:ご利用のお知らせ newer_than:3d';
+// 対象のメール。カードを増やしたら OR でつなぐ
+//   JCB: qa.jcb.co.jp、三井住友カード: vpass.ne.jp (件名はどちらも「ご利用のお知らせ」を含む)
+const QUERY = '(from:qa.jcb.co.jp OR from:vpass.ne.jp) subject:ご利用のお知らせ newer_than:3d';
 
 // 何分ごとに見に行くか (1, 5, 10, 15, 30 のどれか)
 const EVERY_MINUTES = 5;
