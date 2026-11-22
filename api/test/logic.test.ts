@@ -58,6 +58,9 @@ test('自分の負担額: 立て替えは受け取った額を引く (未精算�
   assert.ok(isOpenAdvance({ advance: true }));
   assert.ok(!isOpenAdvance({ advance: true, received: 0 }));
   assert.ok(!isOpenAdvance({ advance: false }));
+  // waripo で割り勘にして自分が払った明細は、相手の負担を引く
+  assert.equal(ownAmount({ amount: 6001, split: { entryId: 'e', role: 'payer', otherShare: 3000 } }), 3001);
+  assert.equal(ownAmount({ amount: 3000, split: { entryId: 'e', role: 'partner' } }), 3000);
 });
 
 test('JWT の cognito:groups はさまざまな形で届く', () => {

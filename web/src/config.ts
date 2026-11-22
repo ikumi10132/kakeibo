@@ -9,6 +9,9 @@ export interface AppConfig {
   region: string;
 }
 
+/** 割り勘アプリ waripo。家計簿の明細から割り勘にするときに、その API (同じサイトの /api) を呼ぶ */
+export const WARIPO_URL = 'https://waripo.wakalabo.net';
+
 let config: AppConfig | undefined;
 
 /** デプロイ時に CDK が書き出す /config.json を読み込む */

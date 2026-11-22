@@ -183,5 +183,9 @@ export class KakeiboStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ApiUrl', { value: api.apiEndpoint });
     new cdk.CfnOutput(this, 'LegacyUserPoolId', { value: legacyUserPool.userPoolId });
     new cdk.CfnOutput(this, 'TableName', { value: table.tableName });
+
+    // waripo (割り勘アプリ) が、割り勘にした明細に印を付け、相手の家計簿に負担分を作るために読む
+    new ssm.StringParameter(this, 'TableNameParam', { parameterName: '/wakalabo/kakeibo/table-name', stringValue: table.tableName });
+    new ssm.StringParameter(this, 'TableArnParam', { parameterName: '/wakalabo/kakeibo/table-arn', stringValue: table.tableArn });
   }
 }

@@ -3,6 +3,8 @@ import { PAYMENT_LABELS, PAYMENT_METHODS, type PaymentMethod, type Transaction, 
 import { api } from '../api';
 import type { Shared } from '../App';
 import { todayJst, yen } from '../util';
+import { getAccessToken } from '../auth';
+import { WARIPO_URL } from '../config';
 import { CategoryPicker } from './CategoryPicker';
 import { sourceLabel } from './TxRow';
 
@@ -118,7 +120,9 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
           )}
         </div>
 
-        {type === 'expense' && (
+        {tx && type === 'expense' && !tx.advance && <WaripoBox tx={tx} changed={changed} toast={toast} handleError={handleError} onClose={onClose} />}
+
+        {type === 'expense' && !tx?.split && (
           <div className="advance-box">
             <label className="switch-row">
               <span>
@@ -170,6 +174,77 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
           <button type="submit" className="btn btn-primary btn-block btn-large" disabled={busy}>保存する</button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/** waripo (割り勘アプリ) と連動する欄。割り勘済みなら内容を、まだならボタンを出す */
+function WaripoBox({ tx, changed, toast, handleError, onClose }: Pick<Shared, 'changed' | 'toast' | 'handleError'> & { tx: Transaction; onClose: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [half, setHalf] = useState(true);
+  const [share, setShare] = useState('');
+  const [busy, setBusy] = useState(false);
+  const otherShare = half ? Math.floor(tx.amount / 2) : Number(share.replace(/[^\d]/g, '')) || 0;
+
+  if (tx.split) {
+    return (
+      <div className="advance-box">
+        <strong>waripo で割り勘中</strong>
+        {tx.split.role === 'payer' ? (
+          <p className="small">
+            相手の負担 {yen(tx.split.otherShare ?? 0)}・あなたの負担 <strong>{yen(tx.amount - (tx.split.otherShare ?? 0))}</strong>（家計簿にはあなたの負担だけが支出として入ります）
+          </p>
+        ) : (
+          <p className="small">相手が払った割り勘の、あなたの負担分です。</p>
+        )}
+        <a className="btn btn-outline btn-small" href={WARIPO_URL} target="_blank" rel="noreferrer">waripo で見る・取り消す</a>
+      </div>
+    );
+  }
+
+  const submit = async () => {
+    if (otherShare > tx.amount) return toast('相手の負担が支払った金額を超えています', true);
+    setBusy(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error('ログインし直してください');
+      const res = await fetch(`${WARIPO_URL}/api/entries`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'split', kakeiboTxId: tx.id, share: otherShare }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { message?: string };
+      if (!res.ok) throw new Error(body.message ?? `waripo に記録できませんでした (${res.status})`);
+      toast(`waripo で割り勘にしました (相手の負担 ${yen(otherShare)})`);
+      changed();
+      onClose();
+    } catch (e) {
+      handleError(e);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="advance-box">
+      {!open ? (
+        <button type="button" className="btn btn-outline" onClick={() => setOpen(true)}>waripo で割り勘</button>
+      ) : (
+        <>
+          <strong>waripo で割り勘</strong>
+          <div className="segmented small-seg" role="group" aria-label="分け方">
+            <button type="button" className={half ? 'active' : ''} aria-pressed={half} onClick={() => setHalf(true)}>半分ずつ</button>
+            <button type="button" className={!half ? 'active' : ''} aria-pressed={!half} onClick={() => setHalf(false)}>相手の負担を指定</button>
+          </div>
+          {!half && (
+            <label className="field">
+              <span>相手の負担</span>
+              <input className="input" inputMode="numeric" value={share} onChange={(e) => setShare(e.target.value.replace(/[^\d]/g, ''))} />
+            </label>
+          )}
+          <p className="small">相手の負担 <strong>{yen(otherShare)}</strong>・あなたの負担 <strong>{yen(Math.max(0, tx.amount - otherShare))}</strong>。相手の家計簿に相手の負担分が「waripoから自動登録」として入ります。</p>
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void submit()}>割り勘にする</button>
+        </>
+      )}
     </div>
   );
 }

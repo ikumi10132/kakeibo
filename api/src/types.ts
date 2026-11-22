@@ -37,14 +37,22 @@ export interface Transaction {
   payment: PaymentMethod;
   merchant: string;
   memo: string;
-  /** shortcut: Apple Pay などショートカット、mail: カード会社の利用通知メール */
-  source: 'manual' | 'shortcut' | 'mail';
+  /** shortcut: Apple Pay などショートカット、mail: カード会社の利用通知メール、waripo: 割り勘アプリが作った明細 */
+  source: 'manual' | 'shortcut' | 'mail' | 'waripo';
   /** ショートカットからの自動登録はカテゴリーを確認するまで false */
   confirmed: boolean;
   /** 立て替え (あとで他の人からお金を受け取る支出)。古いデータには無いので未定義は false 扱い */
   advance?: boolean;
   /** 立て替えで受け取った額。null / 未定義なら未精算。自分の負担 = amount - received */
   received?: number | null;
+  /** waripo (割り勘アプリ) で割り勘にした明細。waripo が書き込む */
+  split?: {
+    entryId: string;
+    /** payer: 自分が払って相手の分を立て替えた。partner: 相手が払った分のうち自分の負担 */
+    role: 'payer' | 'partner';
+    /** payer のときの相手の負担額 */
+    otherShare?: number;
+  };
   createdAt: string;
 }
 
@@ -52,9 +60,14 @@ export type TransactionInput = Omit<Transaction, 'id' | 'createdAt' | 'source' |
   confirmed?: boolean;
 };
 
-/** 自分の負担額。立て替えは受け取った額を差し引く (未精算の間は全額) */
-export const ownAmount = (t: Pick<Transaction, 'amount' | 'advance' | 'received'>): number =>
-  t.advance ? t.amount - (t.received ?? 0) : t.amount;
+/**
+ * 自分の負担額。立て替えは受け取った額を差し引く (未精算の間は全額)。
+ * waripo で割り勘にして自分が払った明細は、相手の負担分を差し引く (相手の家計簿に相手の分が入る)
+ */
+export const ownAmount = (t: Pick<Transaction, 'amount' | 'advance' | 'received' | 'split'>): number => {
+  if (t.split?.role === 'payer') return t.amount - (t.split.otherShare ?? 0);
+  return t.advance ? t.amount - (t.received ?? 0) : t.amount;
+};
 
 export const isOpenAdvance = (t: Pick<Transaction, 'advance' | 'received'>): boolean =>
   !!t.advance && (t.received === null || t.received === undefined);
