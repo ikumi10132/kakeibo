@@ -142,6 +142,25 @@ function Main({ onAuthError }: { onAuthError: () => void }) {
     window.scrollTo({ top: 0 });
   }, []);
 
+  // 通知から開いたとき (?tab=inbox など) は、その画面を表示する
+  useEffect(() => {
+    const open = (url: string) => {
+      const t = new URL(url, location.origin).searchParams.get('tab');
+      if (t && (['home', 'list', 'inbox', 'advances', 'settings'] as string[]).includes(t)) go(t as Tab);
+      setVersion((v) => v + 1);
+    };
+    if (new URLSearchParams(location.search).has('tab')) {
+      open(location.href);
+      history.replaceState(null, '', location.pathname + location.hash);
+    }
+    // アプリを開いたまま通知を押したとき (サービスワーカーから届く)
+    const onMessage = (e: MessageEvent<{ type?: string; url?: string }>) => {
+      if (e.data?.type === 'open' && e.data.url) open(e.data.url);
+    };
+    navigator.serviceWorker?.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
+  }, [go]);
+
   // 「記録する」: ホームでは画面内のフォームへ移動、ほかの画面では下から出るシートを開く
   const add = () => {
     const form = tab === 'home' ? document.getElementById('quick-form') : null;

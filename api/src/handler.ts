@@ -4,6 +4,7 @@ import type {
   APIGatewayProxyStructuredResultV2,
 } from 'aws-lambda';
 import * as db from './db.js';
+import { isSubscription, pushStore } from './push.js';
 import { categoryLabel, groupsFromClaim, isDate, isMonth, matchRule, normalize, parseAmount, parseCardMail, todayJst, yen, type CardMail } from './logic.js';
 import {
   isOpenAdvance,
@@ -18,6 +19,7 @@ import {
 
 /** W-SSO のグループ。このグループの人 (と管理者) だけが家計簿を使える */
 const APP_GROUP = 'app-kakeibo';
+const push = pushStore(process.env.TABLE_NAME ?? 'kakeibo');
 
 class HttpError extends Error {
   constructor(
@@ -205,6 +207,39 @@ async function appRoute(event: APIGatewayProxyEventV2WithJWTAuthorizer, uid: str
       await db.deleteToken(uid, id);
       return json(200, { ok: true });
 
+    // 通知 (Web プッシュ)。端末ごとに登録し、種類ごとにオン/オフできる
+    case 'GET /push':
+      return json(200, { publicKey: await push.publicKey(), settings: await push.settings(uid), devices: await push.deviceCount(uid) });
+    case 'POST /push/subscriptions': {
+      const b = parseBody(event);
+      if (!isSubscription(b.subscription)) throw new HttpError(400, '通知の登録情報が不正です');
+      if ((await push.deviceCount(uid)) >= 10) throw new HttpError(400, '通知を受け取る端末は 10 台までです');
+      await push.subscribe(uid, b.subscription, str(b.device, 200));
+      return json(201, { ok: true });
+    }
+    case 'POST /push/unsubscribe': {
+      const endpoint = str(parseBody(event).endpoint, 2000);
+      if (endpoint) await push.unsubscribe(uid, endpoint);
+      return json(200, { ok: true });
+    }
+    case 'PUT /push/settings': {
+      const b = parseBody(event);
+      return json(200, await push.saveSettings(uid, { mail: b.mail === true, waripo: b.waripo === true }));
+    }
+    case 'POST /push/test':
+      return json(200, { sent: await push.notify(uid, null, { title: '家計簿', body: 'テスト通知です。記録したときはこのように届きます', url: '/', tag: 'test' }) });
+
+    // 利用通知メールの読み取りテスト (記録はしない)。画面で本文を貼り付けて、正しく読めるか確かめる
+    case 'POST /mail/preview': {
+      const text = str(parseBody(event).text, 50_000);
+      if (!text) throw new HttpError(400, 'メールの本文を貼り付けてください');
+      try {
+        return json(200, { ok: true, ...parseCardMail(text) });
+      } catch (e) {
+        return json(200, { ok: false, message: (e as Error).message });
+      }
+    }
+
     default:
       throw new HttpError(404, 'Not Found');
   }
@@ -390,20 +425,25 @@ async function shortcutRoute(event: APIGatewayProxyEventV2): Promise<APIGatewayP
         };
         return json(200, result);
       }
-      return json(
-        201,
-        await record(uid, {
-          date: mail.date,
-          type: 'expense',
-          amount: mail.amount,
-          merchant: mail.merchant,
-          category: '',
-          payment: 'card',
-          memo: mail.card,
-          source: 'mail',
-          advance: false,
-        }),
-      );
+      const recorded = await record(uid, {
+        date: mail.date,
+        type: 'expense',
+        amount: mail.amount,
+        merchant: mail.merchant,
+        category: '',
+        payment: 'card',
+        memo: mail.card,
+        source: 'mail',
+        advance: false,
+      });
+      // iPhone に通知 (設定でオフにしていれば送らない)。未確認なら、押すと「未確認」の画面を開く
+      await push.notify(uid, 'mail', {
+        title: '家計簿に記録しました',
+        body: `${yen(recorded.amount)} ${recorded.merchant || '(店名なし)'}${recorded.confirmed ? `・${recorded.category}` : '・カテゴリーを確認してください'}`,
+        url: recorded.confirmed ? '/' : '/?tab=inbox',
+        tag: recorded.id,
+      });
+      return json(201, recorded);
     }
 
     default:

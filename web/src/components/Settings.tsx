@@ -1,14 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { ApiToken, Category, CreatedToken, Rule, TxType } from '../../../api/src/types';
-import { api } from '../api';
+import { api, type MailPreview as MailPreviewResult } from '../api';
 import type { Shared } from '../App';
 import { isAdmin, logout } from '../auth';
 import { getConfig } from '../config';
-import { categoryLabel, orderedCategories } from '../util';
+import { categoryLabel, orderedCategories, yen } from '../util';
 import { CategorySelect } from './CategorySelect';
 import { Export } from './Export';
+import { Notify } from './Notify';
 
-type Section = 'categories' | 'rules' | 'shortcut' | 'export';
+type Section = 'categories' | 'rules' | 'shortcut' | 'notify' | 'export';
 
 export function Settings({ month, ...props }: Shared & { month: string }) {
   const [section, setSection] = useState<Section>('categories');
@@ -21,7 +22,8 @@ export function Settings({ month, ...props }: Shared & { month: string }) {
         {([
           ['categories', 'カテゴリー'],
           ['rules', '振り分け'],
-          ['shortcut', 'ショートカット'],
+          ['shortcut', '自動記録'],
+          ['notify', '通知'],
           ['export', 'AI 書き出し'],
         ] as const).map(([id, label]) => (
           <button key={id} role="tab" aria-selected={section === id} className={section === id ? 'active' : ''} onClick={() => setSection(id)}>
@@ -32,6 +34,7 @@ export function Settings({ month, ...props }: Shared & { month: string }) {
       {section === 'categories' && <Categories {...props} />}
       {section === 'rules' && <Rules {...props} />}
       {section === 'shortcut' && <Shortcut {...props} />}
+      {section === 'notify' && <Notify {...props} />}
       {section === 'export' && <Export {...props} month={month} embedded />}
       {isAdmin() && (
         <section className="card">
@@ -316,6 +319,55 @@ function Rules({ categories, toast, handleError }: Shared) {
 
 // ---------- ショートカット連携 ----------
 
+const SCRIPT_URL = 'https://github.com/ikumi10132/kakeibo/blob/main/scripts/gmail-to-kakeibo.gs';
+
+/** 利用通知メールの本文を貼り付けて、正しく読み取れるか確かめる (記録はしない) */
+function MailPreview({ toast, handleError }: Pick<Shared, 'toast' | 'handleError'>) {
+  const [text, setText] = useState('');
+  const [result, setResult] = useState<MailPreviewResult | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const check = async () => {
+    if (!text.trim()) return toast('メールの本文を貼り付けてください', true);
+    setBusy(true);
+    try {
+      setResult(await api.previewMail(text));
+    } catch (e) {
+      handleError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="card">
+      <h2 className="card-title">メールの読み取りテスト</h2>
+      <p className="muted small">
+        カードの利用通知メールの本文を貼り付けると、家計簿に記録される内容を確かめられます (ここでは記録しません)。
+        新しいカードのメールに対応しているか確かめるときに使ってください。
+      </p>
+      <label className="field">
+        <span>利用通知メールの本文</span>
+        <textarea className="input export-text" rows={8} value={text} onChange={(e) => setText(e.target.value)} placeholder={'例:\n◇利用日：2026/11/20 19:05\n◇利用先：セブン－イレブン\n◇利用金額：1,280円'} />
+      </label>
+      <button className="btn btn-primary" disabled={busy} onClick={() => void check()}>読み取る</button>
+      {result?.ok && (
+        <dl className="kv preview-result">
+          <dt>日付</dt><dd>{result.date}</dd>
+          <dt>金額</dt><dd className="num">{yen(result.amount)}</dd>
+          <dt>店名</dt><dd>{result.merchant || <span className="muted">(読み取れませんでした)</span>}</dd>
+          <dt>カード</dt><dd>{result.card || <span className="muted">(読み取れませんでした。メモが空になります)</span>}</dd>
+        </dl>
+      )}
+      {result && !result.ok && (
+        <p className="small error-text">
+          {result.message}。このメールは記録されません。カード会社のメールの形が違う可能性があるので、本文 (氏名などは消して) を開発者に送ってください。
+        </p>
+      )}
+    </section>
+  );
+}
+
 function Shortcut({ toast, handleError }: Shared) {
   const [tokens, setTokens] = useState<ApiToken[] | null>(null);
   const [created, setCreated] = useState<CreatedToken | null>(null);
@@ -458,6 +510,46 @@ function Shortcut({ toast, handleError }: Shared) {
         </ol>
         <p className="muted small">店名はカタカナで届きます (例: スターバツクス)。振り分けルールは小さい「ッ」なども同じとみなして比べます。同じメールで二重に記録されることはありません。</p>
       </section>
+
+      <section className="card guide">
+        <h2 className="card-title">④ Gmail に届く利用通知メールを自動で記録 (おすすめ)</h2>
+        <p className="muted small">
+          ③ は iPhone がメールを受信したときにしか動きません。Google Apps Script を使うと、Google のサーバーが 5 分ごとに Gmail を確認して記録するので、
+          iPhone の状態に関係なく記録できます (無料)。対応: JCB、三井住友カード。③ と併用しても二重には記録されません。
+        </p>
+        <ol>
+          <li>カード会社の利用通知メールが <b>Gmail</b> に届くようにしておく (JCB: MyJCB、三井住友カード: Vpass の「ご利用通知サービス」)</li>
+          <li>上の「API トークン」で、Gmail 用のトークンを発行してコピーしておく (名前: 例「Gmail」)</li>
+          <li>
+            パソコンで{' '}
+            <a href="https://script.google.com" target="_blank" rel="noreferrer">script.google.com</a>{' '}
+            を開き、Gmail と同じ Google アカウントで「<b>新しいプロジェクト</b>」。名前を「家計簿」などにする
+          </li>
+          <li>
+            最初からある <code>function myFunction() {'{…}'}</code> をすべて消し、
+            <a href={SCRIPT_URL} target="_blank" rel="noreferrer">スクリプト (gmail-to-kakeibo.gs)</a> の中身をすべて貼り付けて 💾 で保存
+            <dl className="kv">
+              <dt>確認</dt>
+              <dd>
+                スクリプトの <code>API_URL</code> が次と同じか確かめる (違えば書き換える)<br />
+                <code className="code">{apiUrl}/shortcut/mail</code> <button className="btn btn-small" onClick={() => void copy(`${apiUrl}/shortcut/mail`)}>コピー</button>
+              </dd>
+            </dl>
+          </li>
+          <li>左の歯車「<b>プロジェクトの設定</b>」→ 一番下「<b>スクリプト プロパティを追加</b>」: プロパティ <code>KAKEIBO_TOKEN</code>、値に 2. のトークン (<code>kb_…</code>) を入れて保存</li>
+          <li>
+            エディタに戻り、上の関数の選択で <code>setup</code> を選んで「<b>実行</b>」。許可を求められたら、自分のアカウント →「詳細」→「(安全ではないページ) に移動」→「許可」
+            <span className="muted small"> (自分で作ったスクリプトなので「Google で確認されていません」と出ますが問題ありません)</span>
+          </li>
+          <li>左の ⏰「<b>トリガー</b>」に <code>check</code> (時間主導型・5 分おき) があれば完了。動いた記録は「<b>実行数</b>」で見られます</li>
+        </ol>
+        <p className="muted small">
+          <code>setup</code> より後に届いたメールから記録します。すぐ試すときは <code>resendRecent</code> を実行すると、直近 3 日分を送り直します (記録済みのものは二重になりません)。
+          トークンはスクリプトに書かず、スクリプト プロパティに置いてください。
+        </p>
+      </section>
+
+      <MailPreview {...{ toast, handleError }} />
     </>
   );
 }

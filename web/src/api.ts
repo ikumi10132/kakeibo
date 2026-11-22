@@ -42,4 +42,23 @@ export const api = {
   tokens: () => call<ApiToken[]>('/tokens'),
   createToken: (name: string) => send<CreatedToken>('POST', '/tokens', { name }),
   deleteToken: (id: string) => send<{ ok: true }>('DELETE', `/tokens/${enc(id)}`),
+
+  push: () => call<PushInfo>('/push'),
+  subscribePush: (subscription: PushSubscriptionJSON, device: string) => send<{ ok: true }>('POST', '/push/subscriptions', { subscription, device }),
+  unsubscribePush: (endpoint: string) => send<{ ok: true }>('POST', '/push/unsubscribe', { endpoint }),
+  savePushSettings: (s: NotifySettings) => send<NotifySettings>('PUT', '/push/settings', s),
+  testPush: () => send<{ sent: number }>('POST', '/push/test'),
+
+  previewMail: (text: string) => send<MailPreview>('POST', '/mail/preview', { text }),
 };
+
+export interface NotifySettings {
+  mail: boolean;
+  waripo: boolean;
+}
+export interface PushInfo {
+  publicKey: string;
+  settings: NotifySettings;
+  devices: number;
+}
+export type MailPreview = { ok: true; date: string; amount: number; merchant: string; card: string } | { ok: false; message: string };

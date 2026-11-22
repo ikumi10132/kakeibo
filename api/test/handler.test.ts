@@ -302,3 +302,58 @@ test('waripo が作った明細は、カテゴリーを直しても店名ルー�
   const rules = await call<Rule[]>('GET /rules');
   assert.ok(!rules.body.some((rule) => rule.keyword === '居酒屋とり吉'));
 });
+
+test('通知: 端末を登録すると、メールから記録したときに通知が届く (設定でオフにできる・消えた端末は削除)', async () => {
+  const { setSender } = await import('../src/push.js');
+  const sent: { endpoint: string; payload: { title: string; body: string; url: string } }[] = [];
+  let failWith = 0;
+  setSender(async (sub, payload) => {
+    if (failWith) throw Object.assign(new Error('gone'), { statusCode: failWith });
+    sent.push({ endpoint: sub.endpoint, payload: JSON.parse(payload) });
+    return { statusCode: 201 };
+  });
+
+  const info = await call<{ publicKey: string; settings: { mail: boolean; waripo: boolean }; devices: number }>('GET /push');
+  assert.ok(info.body.publicKey.length > 40); // 鍵は最初に自動で作られる
+  assert.deepEqual(info.body.settings, { mail: true, waripo: true });
+  assert.equal((await call<{ publicKey: string }>('GET /push')).body.publicKey, info.body.publicKey); // 作り直さない
+
+  const subscription = { endpoint: 'https://web.push.apple.com/abc', keys: { p256dh: 'p'.repeat(87), auth: 'a'.repeat(22) } };
+  assert.equal((await call('POST /push/subscriptions', { body: { subscription: { endpoint: 'http://x' } } })).status, 400);
+  assert.equal((await call('POST /push/subscriptions', { body: { subscription, device: 'iPhone' } })).status, 201);
+  assert.equal((await call<{ devices: number }>('GET /push')).body.devices, 1);
+  assert.equal((await call<{ sent: number }>('POST /push/test')).body.sent, 1);
+
+  const token = await issueToken();
+  const mail = (amount: string, merchant: string) => `【ご利用日時(日本時間)】 2026/11/16 13:12\n【ご利用金額】 ${amount}円\n【ご利用先】 ${merchant}`;
+  sent.length = 0;
+  await call('POST /shortcut/mail', { token, user: null, body: { text: mail('2,060', '町の定食屋') } });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]!.payload.title, '家計簿に記録しました');
+  assert.match(sent[0]!.payload.body, /¥2,060 町の定食屋・カテゴリーを確認してください/);
+  assert.equal(sent[0]!.payload.url, '/?tab=inbox');
+  // 記録済みのメールが再送されても、通知しない
+  await call('POST /shortcut/mail', { token, user: null, body: { text: mail('2,060', '町の定食屋') } });
+  assert.equal(sent.length, 1);
+
+  // 設定でオフ
+  await call('PUT /push/settings', { body: { mail: false, waripo: true } });
+  await call('POST /shortcut/mail', { token, user: null, body: { text: mail('500', 'パン屋') } });
+  assert.equal(sent.length, 1);
+  await call('PUT /push/settings', { body: { mail: true, waripo: true } });
+
+  // 端末側で通知をやめていた (410) → 登録を消す。記録そのものは成功する
+  failWith = 410;
+  const r = await call('POST /shortcut/mail', { token, user: null, body: { text: mail('700', '本屋') } });
+  assert.equal(r.status, 201);
+  assert.equal((await call<{ devices: number }>('GET /push')).body.devices, 0);
+});
+
+test('利用通知メールの読み取りテスト (記録はしない)', async () => {
+  const ok = await call<{ ok: boolean; amount: number; merchant: string }>('POST /mail/preview', { body: { text: '◇利用日：2026/11/20 19:05\n◇利用先：セブン－イレブン\n◇利用金額：1,280円' } });
+  assert.deepEqual([ok.body.ok, ok.body.amount, ok.body.merchant], [true, 1280, 'セブン-イレブン']);
+  const ng = await call<{ ok: boolean; message: string }>('POST /mail/preview', { body: { text: 'キャンペーンのお知らせ' } });
+  assert.equal(ng.body.ok, false);
+  assert.equal((await call('POST /mail/preview', { body: { text: '' } })).status, 400);
+  assert.equal((await call<Transaction[]>('GET /transactions', { query: { month: '2026-11' } })).body.length, 0);
+});
