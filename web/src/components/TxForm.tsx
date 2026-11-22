@@ -8,6 +8,19 @@ import { WARIPO_URL } from '../config';
 import { CategoryPicker } from './CategoryPicker';
 import { sourceLabel } from './TxRow';
 
+/** 家計簿の明細を waripo で割り勘にする (相手の負担 share。相手の家計簿に負担分が入る) */
+async function splitOnWaripo(txId: string, share: number): Promise<void> {
+  const token = await getAccessToken();
+  if (!token) throw new Error('ログインし直してください');
+  const res = await fetch(`${WARIPO_URL}/api/entries`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'split', kakeiboTxId: txId, share }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { message?: string };
+  if (!res.ok) throw new Error(body.message ?? `waripo に記録できませんでした (${res.status})`);
+}
+
 interface Props extends Shared {
   tx?: Transaction;
   onClose: () => void;
@@ -26,9 +39,15 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
   const [memo, setMemo] = useState(tx?.memo ?? '');
   const [advance, setAdvance] = useState(tx?.advance ?? false);
   const [received, setReceived] = useState(tx?.received != null ? String(tx.received) : '');
+  // 新しく記録するときに、そのまま waripo で割り勘にする
+  const [split, setSplit] = useState(false);
+  const [splitHalf, setSplitHalf] = useState(true);
+  const [splitShare, setSplitShare] = useState('');
   const [busy, setBusy] = useState(false);
   const amountNum = Number(amount.replace(/[^\d]/g, '')) || 0;
   const receivedNum = received === '' ? null : Number(received.replace(/[^\d]/g, '')) || 0;
+  const otherShare = splitHalf ? Math.floor(amountNum / 2) : Number(splitShare.replace(/[^\d]/g, '')) || 0;
+  const willSplit = !tx && type === 'expense' && !advance && split;
 
   const changeType = (t: TxType) => {
     setType(t);
@@ -45,10 +64,28 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
         setBusy(false);
         return toast('受け取った額が支払った金額を超えています', true);
       }
+      if (willSplit && otherShare > n) {
+        setBusy(false);
+        return toast('相手の負担が支払った金額を超えています', true);
+      }
       const isAdvance = type === 'expense' && advance;
       const input = { type, amount: n, date, categoryId, payment: type === 'income' ? ('other' as const) : payment, merchant, memo, advance: isAdvance, received: isAdvance ? receivedNum : null };
       if (tx) await api.updateTransaction(tx.id, input);
-      else await api.createTransaction(input);
+      else {
+        const created = await api.createTransaction(input);
+        if (willSplit) {
+          try {
+            await splitOnWaripo(created.id, otherShare);
+          } catch (err) {
+            // 明細は記録できている。あとから明細を開いて「waripo で割り勘」でやり直せる
+            onSaved(`${yen(n)} を記録しました`);
+            toast(`記録しましたが、waripo で割り勘にできませんでした (${err instanceof Error ? err.message : String(err)})。明細を開いてやり直せます`, true);
+            return;
+          }
+          onSaved(`${yen(n)} を記録して、waripo で割り勘にしました (相手の負担 ${yen(otherShare)})`);
+          return;
+        }
+      }
       onSaved(`${yen(n)} を${tx ? '更新' : '記録'}しました`);
     } catch (err) {
       handleError(err);
@@ -118,7 +155,46 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
 
         {tx && type === 'expense' && !tx.advance && <WaripoBox tx={tx} changed={changed} toast={toast} handleError={handleError} onClose={onClose} />}
 
-        {type === 'expense' && !tx?.split && (
+        {!tx && type === 'expense' && !advance && (
+          <div className="advance-box">
+            <label className="switch-row">
+              <span>
+                <strong>waripo で割り勘</strong>
+                <span className="muted small"> 相手の家計簿に相手の負担分が入ります</span>
+              </span>
+              <input type="checkbox" role="switch" checked={split} onChange={(e) => setSplit(e.target.checked)} />
+            </label>
+            {split && (
+              <>
+                <div className="segmented small-seg" role="group" aria-label="分け方">
+                  <button type="button" className={splitHalf ? 'active' : ''} aria-pressed={splitHalf} onClick={() => setSplitHalf(true)}>半分ずつ</button>
+                  <button type="button" className={!splitHalf ? 'active' : ''} aria-pressed={!splitHalf} onClick={() => setSplitHalf(false)}>相手の負担を指定</button>
+                </div>
+                {!splitHalf && (
+                  <label className="field">
+                    <span>相手の負担</span>
+                    <div className="amount-input small-amount">
+                      <span aria-hidden>¥</span>
+                      <input
+                        className="input"
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={splitShare === '' ? '' : Number(splitShare.replace(/[^\d]/g, '') || 0).toLocaleString('ja-JP')}
+                        onChange={(e) => setSplitShare(e.target.value.replace(/[^\d]/g, ''))}
+                      />
+                    </div>
+                  </label>
+                )}
+                <p className="small">
+                  相手の負担 <strong>{yen(otherShare)}</strong>・あなたの負担 <strong>{yen(Math.max(0, amountNum - otherShare))}</strong>
+                  <span className="muted">（家計簿にはあなたの負担だけが支出として入ります）</span>
+                </p>
+              </>
+            )}
+          </div>
+        )}
+
+        {type === 'expense' && !tx?.split && !willSplit && (
           <div className="advance-box">
             <label className="switch-row">
               <span>
@@ -226,15 +302,7 @@ function WaripoBox({ tx, changed, toast, handleError, onClose }: Pick<Shared, 'c
     if (otherShare > tx.amount) return toast('相手の負担が支払った金額を超えています', true);
     setBusy(true);
     try {
-      const token = await getAccessToken();
-      if (!token) throw new Error('ログインし直してください');
-      const res = await fetch(`${WARIPO_URL}/api/entries`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'split', kakeiboTxId: tx.id, share: otherShare }),
-      });
-      const body = (await res.json().catch(() => ({}))) as { message?: string };
-      if (!res.ok) throw new Error(body.message ?? `waripo に記録できませんでした (${res.status})`);
+      await splitOnWaripo(tx.id, otherShare);
       toast(`waripo で割り勘にしました (相手の負担 ${yen(otherShare)})`);
       changed();
       onClose();
