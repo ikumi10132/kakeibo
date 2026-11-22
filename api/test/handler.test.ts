@@ -69,7 +69,7 @@ async function call<T>(
     isBase64Encoded: false,
     pathParameters: opts.path,
     queryStringParameters: opts.query,
-    requestContext: opts.user === null ? {} : { authorizer: { jwt: { claims: { sub: opts.user ?? USER } } } },
+    requestContext: opts.user === null ? {} : { authorizer: { jwt: { claims: { sub: opts.user ?? USER, 'cognito:groups': '[app-kakeibo]' } } } },
   } as unknown as APIGatewayProxyEventV2;
   const res = (await handler(event)) as APIGatewayProxyStructuredResultV2;
   return { status: res.statusCode!, body: JSON.parse(res.body as string) as T };
@@ -225,23 +225,18 @@ test('立て替え: 受け取った額を後から登録し、差額が自分の
   assert.equal(income.body.advance, false);
 });
 
-test('管理者 API は admin グループのときだけ使える', async () => {
-  const res = await handler({
-    routeKey: 'GET /admin/users',
-    headers: {},
-    isBase64Encoded: false,
-    requestContext: { authorizer: { jwt: { claims: { sub: USER } } } },
-  } as unknown as APIGatewayProxyEventV2);
-  assert.equal((res as APIGatewayProxyStructuredResultV2).statusCode, 403);
-
-  const self = await handler({
-    routeKey: 'DELETE /admin/users/{username}',
-    headers: {},
-    isBase64Encoded: false,
-    pathParameters: { username: USER },
-    requestContext: { authorizer: { jwt: { claims: { sub: USER, 'cognito:groups': '[admin]' } } } },
-  } as unknown as APIGatewayProxyEventV2);
-  assert.equal((self as APIGatewayProxyStructuredResultV2).statusCode, 400); // 自分自身は削除できない
+test('W-SSO のアカウントのうち、admin か app-kakeibo グループの人だけが使える', async () => {
+  const status = async (groups: unknown) =>
+    ((await handler({
+      routeKey: 'GET /categories',
+      headers: {},
+      isBase64Encoded: false,
+      requestContext: { authorizer: { jwt: { claims: { sub: USER, ...(groups === undefined ? {} : { 'cognito:groups': groups }) } } } },
+    } as unknown as APIGatewayProxyEventV2)) as APIGatewayProxyStructuredResultV2).statusCode;
+  assert.equal(await status(undefined), 403);
+  assert.equal(await status('[app-smart-home]'), 403);
+  assert.equal(await status('[app-kakeibo]'), 200);
+  assert.equal(await status('[admin]'), 200);
 });
 
 test('カード会社の利用通知メールを記録し、同じメールは二重に記録しない', async () => {

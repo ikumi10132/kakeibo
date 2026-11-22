@@ -9,20 +9,18 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
-import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import type { Construct } from 'constructs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const LOCAL_DEV_URL = 'http://localhost:5173';
 
 export interface KakeiboStackProps extends cdk.StackProps {
-  /** ログインユーザーのメールアドレス。初回に仮パスワードがメールで届く */
-  users?: string[];
   /**
    * 独自ドメイン (例 kakeibo.wakalabo.net)。certificateArn とセットで指定する。
    * 証明書は CloudFront の決まりで us-east-1 に置く必要があり、CloudShell で AWS CLI から作成する (README 参照)。
@@ -30,8 +28,6 @@ export interface KakeiboStackProps extends cdk.StackProps {
    */
   domainName?: string;
   certificateArn?: string;
-  /** 管理者 (ユーザーの追加などができる) にする Cognito のユーザー名 (sub)。cdk.json の adminUsers */
-  adminUsers?: string[];
 }
 
 export class KakeiboStack extends cdk.Stack {
@@ -90,59 +86,19 @@ export class KakeiboStack extends cdk.Stack {
     const siteUrls = customDomain ? [`https://${customDomain.name}`, cloudfrontUrl] : [cloudfrontUrl];
     const siteUrl = siteUrls[0]!;
 
-    // ---------- ログイン (Cognito) ----------
-    const userPool = new cognito.UserPool(this, 'UserPool', {
-      selfSignUpEnabled: false, // 利用者は CLI で作成する (知らない人は登録できない)
+    // ---------- ログイン: W-SSO (wakalabo 共通ログイン。wakalabo-apps が SSM に置いた値を読む) ----------
+    const wssoPoolId = ssm.StringParameter.valueForStringParameter(this, '/wakalabo/auth/user-pool-id');
+    const wssoClientId = ssm.StringParameter.valueForStringParameter(this, '/wakalabo/auth/wsso-client-id');
+    const ssoUrl = ssm.StringParameter.valueForStringParameter(this, '/wakalabo/auth/sso-url');
+
+    // 以前の家計簿専用のログイン。データを W-SSO のアカウントへ移す (scripts/migrate-to-wsso.mjs) ときに使うので残しておく。
+    // 設定を変えると作り直しになるので、このまま変更しない
+    const legacyUserPool = new cognito.UserPool(this, 'UserPool', {
+      selfSignUpEnabled: false,
       signInAliases: { email: true },
       passwordPolicy: { minLength: 12 },
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
-    // 利用者 (新規登録は無効なので、ここに書いた人だけがログインできる)。
-    // 一覧から外してもユーザーは削除しない (家計簿のデータが残っているため)。削除は Cognito の画面から行う
-    for (const email of props.users ?? []) {
-      const user = new cognito.CfnUserPoolUser(this, `User-${email.replace(/[^A-Za-z0-9]/g, '-')}`, {
-        userPoolId: userPool.userPoolId,
-        username: email,
-        userAttributes: [
-          { name: 'email', value: email },
-          { name: 'email_verified', value: 'true' },
-        ],
-        desiredDeliveryMediums: ['EMAIL'],
-      });
-      user.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
-    }
-
-    // 管理者グループ。ログインのトークンに cognito:groups として入り、API で確認する
-    const adminGroup = new cognito.CfnUserPoolGroup(this, 'AdminGroup', {
-      userPoolId: userPool.userPoolId,
-      groupName: 'admin',
-      description: 'ユーザーの追加・停止・削除ができる',
-    });
-    for (const username of props.adminUsers ?? []) {
-      const attach = new cognito.CfnUserPoolUserToGroupAttachment(this, `Admin-${username}`, {
-        userPoolId: userPool.userPoolId,
-        groupName: 'admin',
-        username,
-      });
-      attach.addDependency(adminGroup);
-    }
-
-    const domain = userPool.addDomain('Domain', {
-      cognitoDomain: { domainPrefix: `kakeibo-${this.account}` },
-    });
-    const client = userPool.addClient('WebClient', {
-      generateSecret: false,
-      oAuth: {
-        flows: { authorizationCodeGrant: true },
-        scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL],
-        callbackUrls: [...siteUrls, LOCAL_DEV_URL].map((u) => `${u}/`),
-        logoutUrls: [...siteUrls, LOCAL_DEV_URL].map((u) => `${u}/`),
-      },
-      preventUserExistenceErrors: true,
-      accessTokenValidity: cdk.Duration.hours(1),
-      idTokenValidity: cdk.Duration.hours(1),
-      refreshTokenValidity: cdk.Duration.days(30),
     });
 
     // ---------- API (API Gateway + Lambda) ----------
@@ -154,7 +110,7 @@ export class KakeiboStack extends cdk.Stack {
       architecture: lambda.Architecture.ARM_64,
       memorySize: 256,
       timeout: cdk.Duration.seconds(15),
-      environment: { TABLE_NAME: table.tableName, USER_POOL_ID: userPool.userPoolId, NODE_OPTIONS: '--enable-source-maps' },
+      environment: { TABLE_NAME: table.tableName, NODE_OPTIONS: '--enable-source-maps' },
       bundling: { minify: true, sourceMap: true, externalModules: [] },
       logGroup: new logs.LogGroup(this, 'ApiLogs', {
         retention: logs.RetentionDays.ONE_MONTH,
@@ -162,26 +118,11 @@ export class KakeiboStack extends cdk.Stack {
       }),
     });
     table.grantReadWriteData(fn);
-    // 管理者画面のユーザー管理 (API 側で admin グループのときだけ呼ぶ)
-    fn.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: [
-          'cognito-idp:ListUsers',
-          'cognito-idp:ListUsersInGroup',
-          'cognito-idp:AdminCreateUser',
-          'cognito-idp:AdminSetUserPassword',
-          'cognito-idp:AdminEnableUser',
-          'cognito-idp:AdminDisableUser',
-          'cognito-idp:AdminDeleteUser',
-        ],
-        resources: [userPool.userPoolArn],
-      }),
-    );
 
     const authorizer = new HttpJwtAuthorizer(
       'CognitoAuthorizer',
-      `https://cognito-idp.${this.region}.amazonaws.com/${userPool.userPoolId}`,
-      { jwtAudience: [client.userPoolClientId] },
+      `https://cognito-idp.${this.region}.amazonaws.com/${wssoPoolId}`,
+      { jwtAudience: [wssoClientId] },
     );
     const api = new apigw.HttpApi(this, 'HttpApi', {
       defaultAuthorizer: authorizer,
@@ -208,8 +149,6 @@ export class KakeiboStack extends cdk.Stack {
       ['/rules/{id}', [DELETE]],
       ['/tokens', [GET, POST]],
       ['/tokens/{id}', [DELETE]],
-      ['/admin/users', [GET, POST]],
-      ['/admin/users/{username}', [PUT, DELETE]],
     ];
     for (const [p, methods] of routes) api.addRoutes({ path: p, methods, integration });
 
@@ -228,8 +167,9 @@ export class KakeiboStack extends cdk.Stack {
         s3deploy.Source.asset(path.join(root, 'web/dist')),
         s3deploy.Source.jsonData('config.json', {
           apiUrl: api.apiEndpoint,
-          userPoolClientId: client.userPoolClientId,
-          cognitoDomain: domain.baseUrl(),
+          ssoUrl,
+          wssoClientId,
+          region: this.region,
         }),
       ],
       destinationBucket: siteBucket,
@@ -241,9 +181,7 @@ export class KakeiboStack extends cdk.Stack {
     // お名前.com で独自ドメインの CNAME の向き先にする値
     new cdk.CfnOutput(this, 'CloudFrontDomain', { value: distribution.distributionDomainName });
     new cdk.CfnOutput(this, 'ApiUrl', { value: api.apiEndpoint });
-    new cdk.CfnOutput(this, 'UserPoolId', { value: userPool.userPoolId });
-    new cdk.CfnOutput(this, 'UserPoolClientId', { value: client.userPoolClientId });
-    new cdk.CfnOutput(this, 'CognitoDomain', { value: domain.baseUrl() });
+    new cdk.CfnOutput(this, 'LegacyUserPoolId', { value: legacyUserPool.userPoolId });
     new cdk.CfnOutput(this, 'TableName', { value: table.tableName });
   }
 }

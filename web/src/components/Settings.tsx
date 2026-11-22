@@ -3,12 +3,11 @@ import type { ApiToken, Category, CreatedToken, Rule, TxType } from '../../../ap
 import { api } from '../api';
 import type { Shared } from '../App';
 import { isAdmin, logout } from '../auth';
-import { AdminUsers } from './AdminUsers';
 import { getConfig } from '../config';
 import { categoryLabel, orderedCategories } from '../util';
 import { CategorySelect } from './CategorySelect';
 
-type Section = 'categories' | 'rules' | 'shortcut' | 'users';
+type Section = 'categories' | 'rules' | 'shortcut';
 
 export function Settings(props: Shared) {
   const [section, setSection] = useState<Section>('categories');
@@ -22,7 +21,6 @@ export function Settings(props: Shared) {
           ['categories', 'カテゴリー'],
           ['rules', '振り分け'],
           ['shortcut', 'ショートカット'],
-          ...(isAdmin() ? ([['users', 'ユーザー']] as const) : []),
         ] as const).map(([id, label]) => (
           <button key={id} role="tab" aria-selected={section === id} className={section === id ? 'active' : ''} onClick={() => setSection(id)}>
             {label}
@@ -32,7 +30,15 @@ export function Settings(props: Shared) {
       {section === 'categories' && <Categories {...props} />}
       {section === 'rules' && <Rules {...props} />}
       {section === 'shortcut' && <Shortcut {...props} />}
-      {section === 'users' && isAdmin() && <AdminUsers {...props} />}
+      {isAdmin() && (
+        <section className="card">
+          <h2 className="card-title">ユーザー管理</h2>
+          <p className="small">
+            家計簿は W-SSO (wakalabo 共通ログイン) を使っています。使う人の追加や、家計簿を使えるかどうかの設定は、ダッシュボードで行います。
+          </p>
+          <a className="btn btn-outline" href="https://apps.wakalabo.net" target="_blank" rel="noreferrer">ダッシュボードを開く</a>
+        </section>
+      )}
       <button className="btn btn-ghost phone-only" onClick={logout}>ログアウト</button>
     </>
   );

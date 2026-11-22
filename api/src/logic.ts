@@ -111,3 +111,14 @@ export function categoryLabel(id: string | null, categories: Category[]): string
 }
 
 export const yen = (n: number) => `¥${n.toLocaleString('ja-JP')}`;
+
+/** JWT の cognito:groups (API Gateway では "[admin other]" のような文字列で届くことがある) */
+export function groupsFromClaim(claim: unknown): string[] {
+  if (Array.isArray(claim)) return claim.map(String);
+  if (typeof claim !== 'string') return [];
+  return claim
+    .replace(/^\[|\]$/g, '')
+    .split(/[\s,]+/)
+    .map((s) => s.replace(/^"|"$/g, ''))
+    .filter(Boolean);
+}

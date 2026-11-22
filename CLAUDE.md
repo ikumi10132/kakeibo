@@ -81,7 +81,8 @@ Constraints for each level:
 
 - 家計簿 Web アプリ。構成は姉妹プロジェクト `ikumi10132/smart-home-dashboard` にそろえている (npm workspaces: `api` / `web` / `infra`、TypeScript、CDK、React + Vite、Cognito、GitHub Actions)
 - デプロイはユーザーが AWS CloudShell で README のコマンドを貼り付けて行う (Mac のターミナルは使わない)。このアカウントは SCP で IAM の OIDC プロバイダー操作が禁止されており、GitHub Actions からはデプロイできない。GitHub Actions は型チェック・テスト・ビルドのみ
-- 利用者は 2 人。データは Cognito の `sub` ごとに完全に分ける (DynamoDB の PK = `USER#<sub>`)。共有機能は作らない
+- ログインは W-SSO (wakalabo 共通ログイン、wakalabo-apps)。web/src/wsso-client.ts は wakalabo-apps からのコピー。API は W-SSO のトークンを受け付け、admin か app-kakeibo グループだけ許可する
+- 利用者は 2 人。データは W-SSO の `sub` ごとに分ける (DynamoDB の PK = `USER#<sub>`)。割り勘は別アプリ waripo
 - iPhone のショートカットからは `/shortcut/*` に、画面で発行したトークン (`kb_...`、ハッシュのみ保存) で送る。Cognito は通さない
 - AI 分析はアプリに組み込まない。将来は「集計値だけ」を書き出してユーザーが Claude に貼る方式 (店名・メモは含めない)
 - 費用はできるだけ 0 円に近づける (常時稼働のサービス・NAT・固定 IP は使わない)

@@ -3,9 +3,8 @@ import type {
   APIGatewayProxyEventV2WithJWTAuthorizer,
   APIGatewayProxyStructuredResultV2,
 } from 'aws-lambda';
-import * as admin from './admin.js';
 import * as db from './db.js';
-import { categoryLabel, isDate, isMonth, matchRule, normalize, parseAmount, parseCardMail, todayJst, yen, type CardMail } from './logic.js';
+import { categoryLabel, groupsFromClaim, isDate, isMonth, matchRule, normalize, parseAmount, parseCardMail, todayJst, yen, type CardMail } from './logic.js';
 import {
   isOpenAdvance,
   PAYMENT_LABELS,
@@ -16,6 +15,9 @@ import {
   type Transaction,
   type TxType,
 } from './types.js';
+
+/** W-SSO のグループ。このグループの人 (と管理者) だけが家計簿を使える */
+const APP_GROUP = 'app-kakeibo';
 
 class HttpError extends Error {
   constructor(
@@ -126,48 +128,7 @@ async function learnRule(uid: string, merchant: string, categoryId: string): Pro
   await db.putRule(uid, { id: same?.id, keyword: merchant, categoryId, auto: same ? same.auto : true });
 }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/** 管理者だけが使える API (ユーザー管理) */
-async function adminRoute(event: APIGatewayProxyEventV2WithJWTAuthorizer, uid: string): Promise<APIGatewayProxyStructuredResultV2> {
-  const groups = admin.groupsFromClaim(event.requestContext.authorizer.jwt.claims['cognito:groups']);
-  if (!groups.includes(admin.ADMIN_GROUP)) throw new HttpError(403, '管理者だけが使える機能です');
-  const target = event.pathParameters?.username ? decodeURIComponent(event.pathParameters.username) : '';
-  if (target && target === uid && event.routeKey !== 'GET /admin/users') {
-    throw new HttpError(400, '自分自身は変更・削除できません');
-  }
-  try {
-    switch (event.routeKey) {
-      case 'GET /admin/users':
-        return json(200, await admin.listUsers());
-      case 'POST /admin/users': {
-        const b = parseBody(event);
-        const email = str(b.email, 254).toLowerCase();
-        if (!EMAIL_RE.test(email)) throw new HttpError(400, 'メールアドレスを正しく入力してください');
-        const password = typeof b.password === 'string' && b.password ? b.password : undefined;
-        return json(201, await admin.createUser(email, password));
-      }
-      case 'PUT /admin/users/{username}': {
-        const b = parseBody(event);
-        if (typeof b.enabled === 'boolean') await admin.setEnabled(target, b.enabled);
-        if (typeof b.password === 'string' && b.password) await admin.resetPassword(target, b.password);
-        return json(200, { ok: true });
-      }
-      case 'DELETE /admin/users/{username}':
-        await admin.deleteUser(target);
-        return json(200, { ok: true });
-      default:
-        throw new HttpError(404, 'Not Found');
-    }
-  } catch (e) {
-    const message = admin.cognitoMessage(e);
-    if (message) throw new HttpError(400, message);
-    throw e;
-  }
-}
-
 async function appRoute(event: APIGatewayProxyEventV2WithJWTAuthorizer, uid: string): Promise<APIGatewayProxyStructuredResultV2> {
-  if (event.routeKey.includes(' /admin/')) return adminRoute(event, uid);
   const id = event.pathParameters?.id ? decodeURIComponent(event.pathParameters.id) : '';
   const q = event.queryStringParameters ?? {};
   await db.ensureSeeded(uid); // 初回だけ既定のカテゴリーとルールを作る (2 回目以降は読み取り 1 回)
@@ -455,6 +416,11 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     const claims = (event as APIGatewayProxyEventV2WithJWTAuthorizer).requestContext.authorizer?.jwt?.claims;
     const uid = typeof claims?.sub === 'string' ? claims.sub : undefined;
     if (!uid) throw new HttpError(401, 'ログインが必要です');
+    // W-SSO のアカウントのうち、家計簿を使えるのは admin か app-kakeibo グループの人だけ
+    const groups = groupsFromClaim(claims?.['cognito:groups']);
+    if (!groups.includes('admin') && !groups.includes(APP_GROUP)) {
+      throw new HttpError(403, '家計簿を使う権限がありません。ダッシュボード (apps.wakalabo.net) の管理者に追加してもらってください');
+    }
     return await appRoute(event as APIGatewayProxyEventV2WithJWTAuthorizer, uid);
   } catch (e) {
     if (e instanceof HttpError) return json(e.status, { message: e.message });

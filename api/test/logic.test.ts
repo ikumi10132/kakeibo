@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { defaultCategories, defaultRules } from '../src/defaults.js';
-import { categoryLabel, isDate, matchRule, normalize, parseAmount, parseCardMail, todayJst } from '../src/logic.js';
-import { groupsFromClaim } from '../src/admin.js';
+import { categoryLabel, groupsFromClaim, isDate, matchRule, normalize, parseAmount, parseCardMail, todayJst } from '../src/logic.js';
 import { isOpenAdvance, ownAmount, type Rule } from '../src/types.js';
 
 test('ショートカットから届くさまざまな金額表記を円の整数にする', () => {

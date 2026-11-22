@@ -48,21 +48,27 @@ curl -so- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
 - コードを更新したときも、同じコマンドを貼り付けるだけです
 - iPhone では Safari の共有メニューから「ホーム画面に追加」すると、アプリのように使えます
 
-### ログインユーザーを増やす
+### ログイン (W-SSO)
 
-新規登録は無効にしてあるので、CloudShell で作ります (メールアドレスを書き換えて 1 行で貼り付け、表示されたらパスワードを入力。12 文字以上で英大文字・英小文字・数字・記号を含める)。
+ログインは **W-SSO** (wakalabo 共通ログイン。ログイン画面は https://apps.wakalabo.net/sso.html) を使います。
+使う人の追加・パスワードの再設定・家計簿を使えるかどうか (グループ `app-kakeibo`) の設定は、ダッシュボードの「ユーザー管理」で行います。
+W-SSO の情報は wakalabo-apps が SSM パラメータ (`/wakalabo/auth/...`) に置いたものを読むので、**wakalabo-apps を先にデプロイ**しておく必要があります。
 
-```bash
-read -s -p "パスワード: " PW && echo && aws cognito-idp admin-create-user --user-pool-id <UserPoolId> --username "メールアドレス" --user-attributes Name=email,Value="メールアドレス" Name=email_verified,Value=true --message-action SUPPRESS >/dev/null && aws cognito-idp admin-set-user-password --user-pool-id <UserPoolId> --username "メールアドレス" --password "$PW" --permanent && echo "作成しました"; unset PW
-```
+### W-SSO への切り替え (1 回だけ)
 
-パスワードを忘れたときは、次で設定し直せます。
+以前は家計簿専用のログインでした。データは「誰のものか」をログインの ID で管理しているので、W-SSO のアカウントに移します
+(同じメールアドレスのアカウント同士を対応づけ。ショートカット用のトークンも移すので、iPhone のショートカットはそのまま使えます)。
 
-```bash
-read -s -p "家計簿の新しいパスワード: " PW && echo && aws cognito-idp admin-set-user-password --user-pool-id <UserPoolId> --username "メールアドレス" --password "$PW" --permanent && echo "設定しました"; unset PW
-```
-
-(初回に `KAKEIBO_USERS="a@example.com,b@example.com"` を付けてデプロイすると、仮パスワードのメールでユーザーを作ることもできます。作成済みのユーザーは、付けずにデプロイしても削除されません)
+1. wakalabo-apps をデプロイし、ダッシュボードの「ユーザー管理」で、家計簿を使う人全員に W-SSO のアカウントがあり「家計簿」にチェックが入っていることを確認
+2. CloudShell で kakeibo を clone して `npm ci` した後、確認だけ実行 (書き込まない)
+   ```bash
+   TABLE=$(aws cloudformation describe-stacks --stack-name Kakeibo --query "Stacks[0].Outputs[?OutputKey=='TableName'].OutputValue" --output text)
+   OLD=$(aws cloudformation describe-stacks --stack-name Kakeibo --query "Stacks[0].Outputs[?OutputKey=='UserPoolId' || OutputKey=='LegacyUserPoolId'].OutputValue | [0]" --output text)
+   NEW=$(aws ssm get-parameter --name /wakalabo/auth/user-pool-id --query Parameter.Value --output text)
+   node scripts/migrate-to-wsso.mjs --table "$TABLE" --old-pool "$OLD" --new-pool "$NEW"
+   ```
+3. 表示に問題がなければ、最後の行に `--apply` を付けて実行 (以前のデータは消さずにコピー。何回実行しても安全)
+4. いつものデプロイ
 
 ### iPhone のショートカットを作る
 
