@@ -171,7 +171,8 @@ async function appRoute(event: APIGatewayProxyEventV2WithJWTAuthorizer, uid: str
       const tx = validateTx(parseBody(event), await db.listCategories(uid));
       const next: Transaction = { ...old, ...tx, confirmed: true };
       const saved = await db.updateTransaction(uid, old, next);
-      if (next.categoryId && next.categoryId !== old.categoryId) await learnRule(uid, next.merchant, next.categoryId);
+      // waripo が作った明細 (割り勘の相手の負担分) は、カテゴリーを直しても店名ルールとして覚えない
+      if (next.categoryId && next.categoryId !== old.categoryId && old.source !== 'waripo') await learnRule(uid, next.merchant, next.categoryId);
       return json(200, saved);
     }
     case 'DELETE /transactions/{id}':

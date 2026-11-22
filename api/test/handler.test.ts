@@ -286,3 +286,19 @@ test('トークンは本文の token 項目や URL でも渡せる', async () =>
   } as unknown as APIGatewayProxyEventV2);
   assert.equal((res as APIGatewayProxyStructuredResultV2).statusCode, 200);
 });
+
+test('waripo が作った明細は、カテゴリーを直しても店名ルールとして覚えない', async () => {
+  await call('GET /categories'); // 既定のカテゴリーを作る
+  store.set(`USER#${USER}|TX#2026-11-14#wp1`, {
+    PK: `USER#${USER}`, SK: 'TX#2026-11-14#wp1', id: '2026-11-14_wp1', date: '2026-11-14', type: 'expense', amount: 3000,
+    categoryId: 'food-eatout', payment: 'other', merchant: '居酒屋とり吉', memo: 'waripoから自動登録', source: 'waripo',
+    confirmed: true, split: { entryId: 'e1', role: 'partner' }, createdAt: '',
+  });
+  const [tx] = (await call<Transaction[]>('GET /transactions', { query: { month: '2026-11' } })).body;
+  const r = await call<Transaction>('PUT /transactions/{id}', { path: { id: tx!.id }, body: { ...tx, categoryId: 'food-cafe' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.categoryId, 'food-cafe');
+  assert.deepEqual(r.body.split, { entryId: 'e1', role: 'partner' }); // 割り勘の印は残る
+  const rules = await call<Rule[]>('GET /rules');
+  assert.ok(!rules.body.some((rule) => rule.keyword === '居酒屋とり吉'));
+});
