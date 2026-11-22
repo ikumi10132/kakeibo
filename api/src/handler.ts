@@ -227,7 +227,7 @@ async function appRoute(event: APIGatewayProxyEventV2WithJWTAuthorizer, uid: str
       return json(200, await push.saveSettings(uid, { mail: b.mail === true, waripo: b.waripo === true }));
     }
     case 'POST /push/test':
-      return json(200, { sent: await push.notify(uid, null, { title: '家計簿', body: 'テスト通知です。記録したときはこのように届きます', url: '/', tag: 'test' }) });
+      return json(200, { sent: await push.notify(uid, null, { title: 'MyKakeibo!', body: 'テスト通知です。記録したときはこのように届きます', url: '/', tag: 'test' }) });
 
     // 利用通知メールの読み取りテスト (記録はしない)。画面で本文を貼り付けて、正しく読めるか確かめる
     case 'POST /mail/preview': {
@@ -345,7 +345,7 @@ async function shortcutRoute(event: APIGatewayProxyEventV2): Promise<APIGatewayP
   }
   const token = auth || bodyToken || (event.queryStringParameters?.token ?? '').trim();
   const uid = token ? await db.userIdFromToken(token) : undefined;
-  if (!uid) throw new HttpError(401, 'トークンが無効です。家計簿の設定画面で発行し直してください');
+  if (!uid) throw new HttpError(401, 'トークンが無効です。MyKakeibo! の設定画面で発行し直してください');
   await db.ensureSeeded(uid);
 
   switch (event.routeKey) {
@@ -438,7 +438,7 @@ async function shortcutRoute(event: APIGatewayProxyEventV2): Promise<APIGatewayP
       });
       // iPhone に通知 (設定でオフにしていれば送らない)。未確認なら、押すと「未確認」の画面を開く
       await push.notify(uid, 'mail', {
-        title: '家計簿に記録しました',
+        title: 'MyKakeibo! に記録しました',
         body: `${yen(recorded.amount)} ${recorded.merchant || '(店名なし)'}${recorded.confirmed ? `・${recorded.category}` : '・カテゴリーを確認してください'}`,
         url: recorded.confirmed ? '/' : '/?tab=inbox',
         tag: recorded.id,
@@ -460,7 +460,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     // W-SSO のアカウントのうち、家計簿を使えるのは admin か app-kakeibo グループの人だけ
     const groups = groupsFromClaim(claims?.['cognito:groups']);
     if (!groups.includes('admin') && !groups.includes(APP_GROUP)) {
-      throw new HttpError(403, '家計簿を使う権限がありません。ダッシュボード (apps.wakalabo.net) の管理者に追加してもらってください');
+      throw new HttpError(403, 'MyKakeibo! を使う権限がありません。ダッシュボード (apps.wakalabo.net) の管理者に追加してもらってください');
     }
     return await appRoute(event as APIGatewayProxyEventV2WithJWTAuthorizer, uid);
   } catch (e) {

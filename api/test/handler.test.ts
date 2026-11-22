@@ -329,7 +329,7 @@ test('通知: 端末を登録すると、メールから記録したときに通
   sent.length = 0;
   await call('POST /shortcut/mail', { token, user: null, body: { text: mail('2,060', '町の定食屋') } });
   assert.equal(sent.length, 1);
-  assert.equal(sent[0]!.payload.title, '家計簿に記録しました');
+  assert.equal(sent[0]!.payload.title, 'MyKakeibo! に記録しました');
   assert.match(sent[0]!.payload.body, /¥2,060 町の定食屋・カテゴリーを確認してください/);
   assert.equal(sent[0]!.payload.url, '/?tab=inbox');
   // 記録済みのメールが再送されても、通知しない

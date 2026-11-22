@@ -69,7 +69,7 @@ export function Notify({ toast, handleError }: Shared) {
     run(async () => {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
-        toast('通知が許可されませんでした。iPhone の「設定 → 通知 → 家計簿」からオンにできます', true);
+        toast('通知が許可されませんでした。iPhone の「設定 → 通知 → MyKakeibo!」からオンにできます', true);
         return;
       }
       const reg = await navigator.serviceWorker.register('/sw.js');
@@ -111,8 +111,8 @@ export function Notify({ toast, handleError }: Shared) {
         <h2 className="card-title">この端末の通知</h2>
         {!ok && isIos() && !isStandalone() && (
           <div className="info-box small">
-            <strong>ホーム画面に追加した家計簿から開いてください</strong>
-            <span>iPhone では、Safari の共有メニュー →「ホーム画面に追加」で追加した家計簿でだけ通知を受け取れます (iOS 16.4 以降)。</span>
+            <strong>ホーム画面に追加した MyKakeibo! から開いてください</strong>
+            <span>iPhone では、Safari の共有メニュー →「ホーム画面に追加」で追加した MyKakeibo! でだけ通知を受け取れます (iOS 16.4 以降)。</span>
           </div>
         )}
         {!ok && !(isIos() && !isStandalone()) && <p className="muted small">このブラウザは通知に対応していません。</p>}
@@ -124,7 +124,7 @@ export function Notify({ toast, handleError }: Shared) {
             </p>
             {typeof Notification !== 'undefined' && Notification.permission === 'denied' ? (
               <p className="small error-text">
-                通知がブロックされています。iPhone の「設定 → 通知 → 家計簿」で「通知を許可」をオンにしてから、もう一度お試しください。
+                通知がブロックされています。iPhone の「設定 → 通知 → MyKakeibo!」で「通知を許可」をオンにしてから、もう一度お試しください。
               </p>
             ) : (
               <button className="btn btn-primary" disabled={busy || !info} onClick={() => void enable()}>この端末で通知を受け取る</button>

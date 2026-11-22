@@ -1,4 +1,4 @@
-// 家計簿のサービスワーカー: 通知 (Web プッシュ) を受け取って表示するだけ。ページのキャッシュはしない
+// MyKakeibo! のサービスワーカー: 通知 (Web プッシュ) を受け取って表示するだけ。ページのキャッシュはしない
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 
@@ -10,7 +10,7 @@ self.addEventListener('push', (e) => {
     d = { body: e.data ? e.data.text() : '' };
   }
   e.waitUntil(
-    self.registration.showNotification(d.title || '家計簿', {
+    self.registration.showNotification(d.title || 'MyKakeibo!', {
       body: d.body || '',
       icon: '/icon-192.png',
       badge: '/icon-192.png',
@@ -20,7 +20,7 @@ self.addEventListener('push', (e) => {
   );
 });
 
-// 通知を押したら家計簿を開く (開いていれば前面に出して、画面を切り替える)
+// 通知を押したら MyKakeibo! を開く (開いていれば前面に出して、画面を切り替える)
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
   const url = new URL((e.notification.data && e.notification.data.url) || '/', self.location.origin).href;

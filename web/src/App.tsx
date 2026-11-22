@@ -42,7 +42,7 @@ export function App() {
     return (
       <div className="center login">
         <img src="/icon.svg" alt="" width={64} height={64} />
-        <h1>家計簿</h1>
+        <h1>MyKakeibo!</h1>
         <button className="btn btn-primary btn-wide" onClick={() => login()}>W-SSO でログイン</button>
       </div>
     );
@@ -190,7 +190,7 @@ function Main({ onAuthError }: { onAuthError: () => void }) {
         <div className="brand">
           <img src="/icon.svg" alt="" width={36} height={36} />
           <span className="brand-text">
-            <strong>家計簿</strong>
+            <strong>MyKakeibo!</strong>
             <span className="muted small">{location.host}</span>
           </span>
         </div>

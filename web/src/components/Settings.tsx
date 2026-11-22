@@ -40,7 +40,7 @@ export function Settings({ month, ...props }: Shared & { month: string }) {
         <section className="card">
           <h2 className="card-title">ユーザー管理</h2>
           <p className="small">
-            家計簿は W-SSO (wakalabo 共通ログイン) を使っています。使う人の追加や、家計簿を使えるかどうかの設定は、ダッシュボードで行います。
+            MyKakeibo! は W-SSO (wakalabo 共通ログイン) を使っています。使う人の追加や、MyKakeibo! を使えるかどうかの設定は、ダッシュボードで行います。
           </p>
           <a className="btn btn-outline" href="https://apps.wakalabo.net" target="_blank" rel="noreferrer">ダッシュボードを開く</a>
         </section>
