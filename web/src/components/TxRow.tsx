@@ -5,6 +5,7 @@ import { categoryLabel, findCategory, yen } from '../util';
 export function sourceLabel(tx: Transaction): string {
   if (tx.source === 'mail') return '利用通知メール';
   if (tx.source === 'waripo') return 'waripo';
+  if (tx.source === 'mytask') return 'MyTask!';
   if (tx.source === 'shortcut') return tx.payment === 'applepay' ? 'Apple Pay' : 'ショートカット';
   return '手入力';
 }

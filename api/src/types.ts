@@ -37,8 +37,8 @@ export interface Transaction {
   payment: PaymentMethod;
   merchant: string;
   memo: string;
-  /** shortcut: Apple Pay などショートカット、mail: カード会社の利用通知メール、waripo: 割り勘アプリが作った明細 */
-  source: 'manual' | 'shortcut' | 'mail' | 'waripo';
+  /** shortcut: Apple Pay などショートカット、mail: カード会社の利用通知メール、waripo: 割り勘アプリが作った明細、mytask: MyTask! でタスクを完了したときの支出 */
+  source: 'manual' | 'shortcut' | 'mail' | 'waripo' | 'mytask';
   /** ショートカットからの自動登録はカテゴリーを確認するまで false */
   confirmed: boolean;
   /** 立て替え (あとで他の人からお金を受け取る支出)。古いデータには無いので未定義は false 扱い */
