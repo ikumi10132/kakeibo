@@ -4,7 +4,7 @@ import { api, type MailPreview as MailPreviewResult } from '../api';
 import type { Shared } from '../App';
 import { isAdmin, logout } from '../auth';
 import { getConfig } from '../config';
-import { categoryLabel, orderedCategories, yen } from '../util';
+import { categoryLabel, orderedCategories, yen, copyToClipboard } from '../util';
 import { CategorySelect } from './CategorySelect';
 import { Export } from './Export';
 import { Notify } from './Notify';
@@ -381,7 +381,7 @@ function Shortcut({ toast, handleError }: Shared) {
 
   const copy = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(text);
+      await copyToClipboard(text);
       toast('コピーしました');
     } catch {
       toast('コピーできませんでした。長押しで選択してください', true);

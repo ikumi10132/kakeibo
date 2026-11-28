@@ -485,3 +485,8 @@ textarea.input { line-height: 1.6; resize: vertical; }
 
 .btn-row { display: flex; flex-wrap: wrap; gap: 10px; }
 .preview-result { background: var(--surface); border-radius: var(--radius-s); padding: 12px 14px; }
+
+/* 古い Safari (iOS 14 まで) は aspect-ratio を使えないので、カレンダーのマスに高さを持たせる */
+@supports not (aspect-ratio: 1 / 1) {
+  .cal-day { min-height: 48px; }
+}

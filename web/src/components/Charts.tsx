@@ -8,6 +8,13 @@ function useWidth<T extends HTMLElement>() {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // ResizeObserver は Safari 13.1 から。古い iPad では画面の大きさが変わったときに測り直す
+    if (typeof ResizeObserver === 'undefined') {
+      const measure = () => setWidth(Math.round(el.getBoundingClientRect().width));
+      measure();
+      window.addEventListener('resize', measure);
+      return () => window.removeEventListener('resize', measure);
+    }
     const ro = new ResizeObserver(([e]) => setWidth(Math.round(e!.contentRect.width)));
     ro.observe(el);
     return () => ro.disconnect();
