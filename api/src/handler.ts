@@ -567,6 +567,13 @@ async function shortcutRoute(event: APIGatewayProxyEventV2): Promise<APIGatewayP
   }
 }
 
+/**
+ * 画面に返してよいエラー文か。アプリが自分で投げた Error (日本語の説明) だけを返し、
+ * AWS の SDK のエラー (アカウント ID や ARN が入ることがある) やプログラムの誤り (TypeError など) は返さない
+ */
+const publicMessage = (e: unknown) =>
+  e instanceof Error && e.constructor === Error ? e.message : 'サーバーでエラーが発生しました。時間をおいてもう一度お試しください';
+
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyStructuredResultV2> {
   try {
     if (event.routeKey.includes(' /shortcut/')) return await shortcutRoute(event);
@@ -582,6 +589,6 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
   } catch (e) {
     if (e instanceof HttpError) return json(e.status, { message: e.message });
     console.error(e);
-    return json(500, { message: e instanceof Error ? e.message : 'エラーが発生しました' });
+    return json(500, { message: publicMessage(e) });
   }
 }

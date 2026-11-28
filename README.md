@@ -117,6 +117,8 @@ npm run dev   # http://localhost:5173
 npm test      # API のテスト (DynamoDB はメモリ上の簡易版に差し替え)
 ```
 
+localhost:5173 からの API の呼び出しは本番では許可していません。開発するときだけ `cdk deploy` に `-c localDev=true` を付けてデプロイしてください (終わったら付けずにデプロイし直す)。
+
 ## データとバックアップ
 
 - DynamoDB のテーブルは削除保護あり。スタックを消してもテーブルは残ります

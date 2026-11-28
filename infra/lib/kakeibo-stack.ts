@@ -39,6 +39,12 @@ const ACCESS_LOG_FORMAT = JSON.stringify({
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const LOCAL_DEV_URL = 'http://localhost:5173';
+/**
+ * ローカル開発 (npm run dev) の画面からの呼び出し。本番では許可せず、
+ * `npx cdk deploy -c localDev=true` でデプロイしたときだけ許可する
+ */
+const devOrigins = (scope: Construct): string[] =>
+  [true, 'true'].includes(scope.node.tryGetContext('localDev')) ? [LOCAL_DEV_URL] : [];
 
 export interface KakeiboStackProps extends cdk.StackProps {
   /**
@@ -158,7 +164,7 @@ export class KakeiboStack extends cdk.Stack {
     const api = new apigw.HttpApi(this, 'HttpApi', {
       defaultAuthorizer: authorizer,
       corsPreflight: {
-        allowOrigins: [...siteUrls, LOCAL_DEV_URL],
+        allowOrigins: [...siteUrls, ...devOrigins(this)],
         allowMethods: [
           apigw.CorsHttpMethod.GET,
           apigw.CorsHttpMethod.POST,
