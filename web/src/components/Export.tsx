@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { isOpenAdvance, type Transaction } from '../../../api/src/types';
 import { api } from '../api';
 import type { Shared } from '../App';
-import { monthLabel, shiftMonth, totals, yen } from '../util';
+import { monthLabel, shiftMonth, totals, yen, copyToClipboard } from '../util';
 import { IconCopy } from './Icons';
 
 const RANGES = [
@@ -90,7 +90,7 @@ export function Export({ categories, handleError, toast, month, embedded }: Shar
   const copy = async () => {
     if (!text) return;
     try {
-      await navigator.clipboard.writeText(text);
+      await copyToClipboard(text);
       toast('コピーしました。Claude に貼り付けてください');
     } catch {
       toast('コピーできませんでした。下の文章を長押しして選択してください', true);

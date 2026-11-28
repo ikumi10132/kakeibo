@@ -510,3 +510,8 @@ textarea.input { line-height: 1.6; resize: vertical; }
 .inst-kv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .inst-kv dt { font-size: 12px; color: var(--muted); }
 .inst-kv dd { font-weight: 700; font-size: 14px; }
+
+/* 古い Safari (iOS 14 まで) は aspect-ratio を使えないので、カレンダーのマスに高さを持たせる */
+@supports not (aspect-ratio: 1 / 1) {
+  .cal-day { min-height: 48px; }
+}

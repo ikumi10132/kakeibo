@@ -81,3 +81,22 @@ export const dayExpense = (txs: Transaction[]) =>
 
 /** カレンダー用の短い金額表記 (例: 1,234 / 1.2万) */
 export const shortYen = (n: number) => (n >= 100_000 ? `${(n / 10_000).toFixed(0)}万` : n >= 10_000 ? `${(n / 10_000).toFixed(1)}万` : n.toLocaleString('ja-JP'));
+
+/** クリップボードにコピーする。navigator.clipboard がない古い Safari (iOS 13.3 まで) は、隠した入力欄を選択してコピーする */
+export async function copyToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.style.position = 'fixed';
+  area.style.top = '0';
+  area.style.opacity = '0';
+  document.body.appendChild(area);
+  try {
+    area.select();
+    area.setSelectionRange(0, text.length); // iOS は select() だけでは全体が選ばれない
+    if (!document.execCommand('copy')) throw new Error('コピーできませんでした');
+  } finally {
+    area.remove();
+  }
+}
