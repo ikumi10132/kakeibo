@@ -5,6 +5,7 @@ import type {
 } from 'aws-lambda';
 import * as db from './db.js';
 import { isSubscription, pushStore } from './push.js';
+import { stillAllowed } from './access.js';
 import {
   categoryLabel,
   groupsFromClaim,
@@ -457,6 +458,10 @@ async function shortcutRoute(event: APIGatewayProxyEventV2): Promise<APIGatewayP
   const token = auth || bodyToken || (event.queryStringParameters?.token ?? '').trim();
   const uid = token ? await db.userIdFromToken(token) : undefined;
   if (!uid) throw new HttpError(401, 'トークンが無効です。MyKakeibo! の設定画面で発行し直してください');
+  // ダッシュボードで停止・削除・権限を外された人のトークンは使えなくする
+  if (!(await stillAllowed(uid))) {
+    throw new HttpError(403, 'MyKakeibo! を使う権限がないため、このトークンは使えません。ダッシュボード (apps.wakalabo.net) の管理者に確認してください');
+  }
   await db.ensureSeeded(uid);
 
   switch (event.routeKey) {

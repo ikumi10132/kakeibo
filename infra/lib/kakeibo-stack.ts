@@ -9,6 +9,7 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
@@ -128,7 +129,7 @@ export class KakeiboStack extends cdk.Stack {
       architecture: lambda.Architecture.ARM_64,
       memorySize: 256,
       timeout: cdk.Duration.seconds(15),
-      environment: { TABLE_NAME: table.tableName, NODE_OPTIONS: '--enable-source-maps' },
+      environment: { TABLE_NAME: table.tableName, USER_POOL_ID: wssoPoolId, NODE_OPTIONS: '--enable-source-maps' },
       bundling: { minify: true, sourceMap: true, externalModules: [] },
       logGroup: new logs.LogGroup(this, 'ApiLogs', {
         retention: logs.RetentionDays.ONE_MONTH,
@@ -136,6 +137,13 @@ export class KakeiboStack extends cdk.Stack {
       }),
     });
     table.grantReadWriteData(fn);
+    // ショートカットのトークンの持ち主が、今もこのアプリを使えるかを確かめる (停止・削除・権限なしなら拒否)
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['cognito-idp:ListUsers', 'cognito-idp:AdminListGroupsForUser'],
+        resources: [`arn:aws:cognito-idp:${this.region}:${this.account}:userpool/${wssoPoolId}`],
+      }),
+    );
 
     const authorizer = new HttpJwtAuthorizer(
       'CognitoAuthorizer',

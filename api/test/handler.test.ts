@@ -1,10 +1,12 @@
 // DynamoDB をメモリ上の簡易版に差し替えて、API を通しで動かすテスト
 import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
+import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from 'aws-lambda';
 import { handler } from '../src/handler.js';
 import type { Category, CreatedToken, Rule, ShortcutResult, Transaction } from '../src/types.js';
+import { clearAccessCache } from '../src/access.js';
 
 type Item = Record<string, unknown> & { PK: string; SK: string };
 const store = new Map<string, Item>();
@@ -58,6 +60,18 @@ const key = (k: { PK: unknown; SK: unknown }) => `${k.PK}|${k.SK}`;
 
 const USER = 'user-a';
 
+// ---- Cognito (ショートカットのトークンの持ち主が今も使えるか) ----
+/** sub → 状態。ここにない人は「使える」 */
+const cognitoUsers = new Map<string, { enabled: boolean; groups: string[] } | 'error'>();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(CognitoIdentityProviderClient.prototype as any).send = async (cmd: { constructor: { name: string }; input: { Filter?: string; Username?: string } }) => {
+  const sub = cmd.input.Username ?? cmd.input.Filter!.match(/"(.*)"/)![1]!;
+  const u = cognitoUsers.get(sub) ?? { enabled: true, groups: ['app-kakeibo'] };
+  if (u === 'error') throw Object.assign(new Error('down'), { name: 'ServiceUnavailable' });
+  if (cmd.constructor.name === 'AdminListGroupsForUserCommand') return { Groups: u.groups.map((GroupName) => ({ GroupName })) };
+  return { Users: [{ Username: sub, Enabled: u.enabled }] };
+};
+
 async function call<T>(
   routeKey: string,
   opts: { body?: unknown; path?: Record<string, string>; query?: Record<string, string>; token?: string; user?: string | null } = {},
@@ -81,7 +95,11 @@ async function issueToken(user = USER): Promise<string> {
   return r.body.token;
 }
 
-beforeEach(() => store.clear());
+beforeEach(() => {
+  store.clear();
+  cognitoUsers.clear();
+  clearAccessCache();
+});
 
 test('初回アクセスで既定のカテゴリーが作られる', async () => {
   const r = await call<Category[]>('GET /categories');
@@ -408,4 +426,22 @@ test('分割払い: 回数分の明細を作り、カテゴリーはほかの回
   assert.equal((await call('DELETE /installments/{id}', { path: { id: planId } })).status, 200);
   assert.equal((await call<Res>('GET /installments')).body.plans.length, 0);
   assert.equal((await call<Transaction[]>('GET /transactions', { query: { month: '2026-12' } })).body.length, 0);
+});
+
+test('ショートカット: 停止・権限を外された人のトークンは使えない。Cognito に聞けないときは通す', async () => {
+  const token = await issueToken();
+  const send = () => call('GET /shortcut/categories', { token, user: null });
+  assert.equal((await send()).status, 200);
+  cognitoUsers.set(USER, { enabled: true, groups: ['app-mytask'] }); // MyKakeibo! の権限を外した
+  clearAccessCache();
+  assert.equal((await send()).status, 403);
+  cognitoUsers.set(USER, { enabled: false, groups: ['app-kakeibo'] }); // 停止した
+  clearAccessCache();
+  assert.equal((await send()).status, 403);
+  cognitoUsers.set(USER, { enabled: true, groups: ['admin'] });
+  clearAccessCache();
+  assert.equal((await send()).status, 200);
+  cognitoUsers.set(USER, 'error'); // Cognito の障害: カードのメールなどの記録を落とさないように通す
+  clearAccessCache();
+  assert.equal((await send()).status, 200);
 });
