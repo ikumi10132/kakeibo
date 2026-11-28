@@ -7,6 +7,8 @@ export interface AppConfig {
   /** W-SSO のアプリ クライアント ID (全アプリ共通) */
   wssoClientId: string;
   region: string;
+  /** 画面のログの送り先 (wakalabo-apps の POST /events) */
+  logUrl?: string;
 }
 
 /** 割り勘アプリ waripo。家計簿の明細から割り勘にするときに、その API (同じサイトの /api) を呼ぶ */

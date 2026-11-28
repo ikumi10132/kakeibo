@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import type { Category, InstallmentsResponse, Transaction } from '../../api/src/types';
 import { api, AuthError } from './api';
-import { handleRedirect, isLoggedIn, login, logout } from './auth';
+import { handleRedirect, isLoggedIn, login, logout, getAccessToken } from './auth';
 import { AdvancesPage } from './components/Advances';
 import { Home } from './components/Home';
 import { IconGear, IconHome, IconInbox, IconInstallment, IconList, IconLogout, IconPlus, IconSwap } from './components/Icons';
@@ -10,8 +10,9 @@ import { Inbox } from './components/Inbox';
 import { Settings } from './components/Settings';
 import { TxForm } from './components/TxForm';
 import { TxList } from './components/TxList';
-import { loadConfig } from './config';
+import { getConfig, loadConfig } from './config';
 import { thisMonth } from './util';
+import { initLog, logView } from './wakalabo-log';
 
 type Phase = { name: 'loading' } | { name: 'login' } | { name: 'ready' } | { name: 'error'; message: string };
 
@@ -82,8 +83,14 @@ export interface Shared {
   go: (tab: Tab) => void;
 }
 
+/** ログに出す画面の名前 */
+const SCREEN_NAMES: Record<Tab, string> = { home: 'ホーム', list: '明細・カレンダー', inbox: '未確認', advances: '立て替え', installments: '分割払い', settings: '設定' };
+
 function Main({ onAuthError }: { onAuthError: () => void }) {
   const [tab, setTab] = useState<Tab>('home');
+  // 共通のログ (どの画面を開いたか・画面のエラー)。apps.wakalabo.net の「ログ」で見られる
+  useEffect(() => initLog({ url: getConfig().logUrl, app: 'kakeibo', getToken: getAccessToken }), []);
+  useEffect(() => logView(SCREEN_NAMES[tab]), [tab]);
   const [month, setMonth] = useState(thisMonth);
   const [categories, setCategories] = useState<Category[] | null>(null);
   const [txs, setTxs] = useState<Transaction[] | null>(null);

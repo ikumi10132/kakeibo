@@ -17,6 +17,24 @@ import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import type { Construct } from 'constructs';
 
+// API Gateway のアクセスログの形 (1 リクエスト 1 行の JSON)。wakalabo-apps の ACCESS_LOG_FORMAT と同じにする。
+// URL のパスやクエリ (トークンや ID が入る) と本文は残さず、ルートの名前 (routeKey) だけを残す
+const ACCESS_LOG_FORMAT = JSON.stringify({
+  t: '$context.requestTimeEpoch',
+  id: '$context.requestId',
+  route: '$context.routeKey',
+  status: '$context.status',
+  latency: '$context.responseLatency',
+  ilatency: '$context.integrationLatency',
+  sub: '$context.authorizer.claims.sub',
+  ip: '$context.identity.sourceIp',
+  ua: '$context.identity.userAgent',
+  err: '$context.error.message',
+  ierr: '$context.integrationErrorMessage',
+})
+  .replace('"$context.status"', '$context.status')
+  .replace('"$context.responseLatency"', '$context.responseLatency');
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const LOCAL_DEV_URL = 'http://localhost:5173';
 
@@ -170,12 +188,21 @@ export class KakeiboStack extends cdk.Stack {
 
     const stage = api.defaultStage?.node.defaultChild as apigw.CfnStage;
     stage.defaultRouteSettings = { throttlingBurstLimit: 20, throttlingRateLimit: 10 };
+    // 操作のログ (誰が・どの操作を・結果・応答時間)。apps.wakalabo.net の「ログ」で見る (90 日で消える)
+    const accessLogs = new logs.LogGroup(this, 'AccessLogs', {
+      logGroupName: '/wakalabo/access/kakeibo',
+      retention: logs.RetentionDays.THREE_MONTHS,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+    stage.accessLogSettings = { destinationArn: accessLogs.logGroupArn, format: ACCESS_LOG_FORMAT };
 
     // ---------- 画面のデプロイ ----------
     new s3deploy.BucketDeployment(this, 'DeployWeb', {
       sources: [
         s3deploy.Source.asset(path.join(root, 'web/dist')),
         s3deploy.Source.jsonData('config.json', {
+          // 画面のログ (開いた画面・画面のエラー) の送り先。wakalabo-apps が SSM に置く
+          logUrl: ssm.StringParameter.valueForStringParameter(this, '/wakalabo/log/events-url'),
           apiUrl: api.apiEndpoint,
           ssoUrl,
           wssoClientId,
