@@ -53,10 +53,12 @@ export interface Transaction {
     /** payer のときの相手の負担額 */
     otherShare?: number;
   };
+  /** 分割払いの 1 回分。同じ planId の明細どうしがひも付いている (金額と日付は分割払いの設定で決まる) */
+  installment?: { planId: string; index: number; count: number; /** この回で繰り上げ返済した */ payoff?: boolean };
   createdAt: string;
 }
 
-export type TransactionInput = Omit<Transaction, 'id' | 'createdAt' | 'source' | 'confirmed'> & {
+export type TransactionInput = Omit<Transaction, 'id' | 'createdAt' | 'source' | 'confirmed' | 'installment'> & {
   confirmed?: boolean;
 };
 
@@ -101,5 +103,58 @@ export interface ShortcutResult {
   confirmed: boolean;
   /** iPhone の通知にそのまま出せる文 */
   message: string;
+}
+
+// ---------- 分割払い ----------
+
+/** 分割払いの各回 (明細の id・日付・金額) */
+export interface InstallmentPayment {
+  txId: string;
+  date: string;
+  amount: number;
+}
+
+export interface InstallmentPlan {
+  id: string;
+  merchant: string;
+  categoryId: string | null;
+  /** 買った金額の合計 */
+  total: number;
+  /** 最初に決めた支払い回数 */
+  count: number;
+  /** 今月から / 来月から */
+  start: 'this' | 'next';
+  purchaseDate: string;
+  /** 各回。繰り上げ返済すると、その回までになる */
+  schedule: InstallmentPayment[];
+  /** 繰り上げ返済した回 (1 始まり) */
+  paidOffAt?: number;
+  createdAt: string;
+}
+
+export interface InstallmentSummary extends InstallmentPlan {
+  /** 毎月の額 (2 回目以降。1 回目は端数を足した額) */
+  monthly: number;
+  /** 今日までに支払日が来た回数 */
+  paidCount: number;
+  /** まだ支払日が来ていない額 */
+  remainingAmount: number;
+  nextDate: string | null;
+  finished: boolean;
+}
+
+export interface InstallmentsResponse {
+  /** 毎月の分割払いの目安 (未設定は null) */
+  threshold: number | null;
+  plans: InstallmentSummary[];
+}
+
+/** 目安との比べ方: 目安まで 1 万円を切ったら near (黄)、超えたら over (赤) */
+export const INSTALLMENT_MARGIN = 10_000;
+export function installmentLevel(amount: number, threshold: number | null): 'normal' | 'near' | 'over' {
+  if (!threshold || threshold <= 0) return 'normal';
+  if (amount > threshold) return 'over';
+  if (amount >= threshold - INSTALLMENT_MARGIN) return 'near';
+  return 'normal';
 }
 

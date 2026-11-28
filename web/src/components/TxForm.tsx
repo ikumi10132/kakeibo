@@ -2,7 +2,11 @@ import { useState, type FormEvent } from 'react';
 import { PAYMENT_LABELS, PAYMENT_METHODS, type PaymentMethod, type Transaction, type TxType } from '../../../api/src/types';
 import { api } from '../api';
 import type { Shared } from '../App';
-import { todayJst, yen } from '../util';
+import { installmentAmounts, installmentDates } from '../../../api/src/logic';
+import { monthLabel, todayJst, yen } from '../util';
+
+/** 分割の回数の選択肢 */
+const INSTALLMENT_COUNTS = [2, 3, 5, 6, 10, 12, 15, 18, 20, 24, 30, 36, 48, 60];
 import { getAccessToken } from '../auth';
 import { WARIPO_URL } from '../config';
 import { CategoryPicker } from './CategoryPicker';
@@ -29,7 +33,7 @@ interface Props extends Shared {
   inline?: boolean;
 }
 
-export function TxForm({ tx, categories, onClose, onSaved, handleError, changed, toast, inline }: Props) {
+export function TxForm({ tx, categories, onClose, onSaved, handleError, changed, toast, inline, go }: Props) {
   const [type, setType] = useState<TxType>(tx?.type ?? 'expense');
   const [amount, setAmount] = useState(tx ? String(tx.amount) : '');
   const [date, setDate] = useState(tx?.date ?? todayJst());
@@ -43,11 +47,20 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
   const [split, setSplit] = useState(false);
   const [splitHalf, setSplitHalf] = useState(true);
   const [splitShare, setSplitShare] = useState('');
+  // 新しく記録するときに、分割払いにする (回数分の明細を毎月に作る)
+  const [inst, setInst] = useState(false);
+  const [instCount, setInstCount] = useState(3);
+  const [instStart, setInstStart] = useState<'this' | 'next'>('next');
   const [busy, setBusy] = useState(false);
   const amountNum = Number(amount.replace(/[^\d]/g, '')) || 0;
   const receivedNum = received === '' ? null : Number(received.replace(/[^\d]/g, '')) || 0;
   const otherShare = splitHalf ? Math.floor(amountNum / 2) : Number(splitShare.replace(/[^\d]/g, '')) || 0;
-  const willSplit = !tx && type === 'expense' && !advance && split;
+  const willSplit = !tx && type === 'expense' && !advance && !inst && split;
+  const willInstall = !tx && type === 'expense' && !advance && !split && inst;
+  const instAmounts = willInstall && amountNum >= instCount ? installmentAmounts(amountNum, instCount) : [];
+  const instDates = willInstall ? installmentDates(date, instCount, instStart) : [];
+  /** 分割払いの回は、金額と日付を分割払いの設定で決める (ここでは変えられない) */
+  const locked = !!tx?.installment;
 
   const changeType = (t: TxType) => {
     setType(t);
@@ -68,10 +81,18 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
         setBusy(false);
         return toast('相手の負担が支払った金額を超えています', true);
       }
+      if (willInstall && n < instCount) {
+        setBusy(false);
+        return toast('金額が分割の回数より少ないです', true);
+      }
       const isAdvance = type === 'expense' && advance;
       const input = { type, amount: n, date, categoryId, payment: type === 'income' ? ('other' as const) : payment, merchant, memo, advance: isAdvance, received: isAdvance ? receivedNum : null };
       if (tx) await api.updateTransaction(tx.id, input);
-      else {
+      else if (willInstall) {
+        await api.createTransaction({ ...input, installment: { count: instCount, start: instStart } });
+        onSaved(`${yen(n)} を ${instCount} 回払いで記録しました (毎月 ${yen(instAmounts[1] ?? 0)})`);
+        return;
+      } else {
         const created = await api.createTransaction(input);
         if (willSplit) {
           try {
@@ -126,6 +147,7 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
               className="input"
               inputMode="numeric"
               autoFocus={!tx && !inline}
+              readOnly={locked}
               placeholder="0"
               value={amount ? Number(amount.replace(/[^\d]/g, '') || 0).toLocaleString('ja-JP') : ''}
               onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ''))}
@@ -139,7 +161,7 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
         <div className={type === 'expense' ? 'field-row' : ''}>
           <label className="field">
             <span>日付</span>
-            <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+            <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} required readOnly={locked} />
           </label>
           {type === 'expense' && (
             <label className="field">
@@ -153,9 +175,74 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
           )}
         </div>
 
-        {tx && type === 'expense' && !tx.advance && <WaripoBox tx={tx} changed={changed} toast={toast} handleError={handleError} onClose={onClose} />}
+        {tx?.installment && (
+          <div className="advance-box">
+            <strong>
+              分割払い {tx.installment.index} / {tx.installment.count} 回目{tx.installment.payoff ? '（繰り上げ返済）' : ''}
+            </strong>
+            <p className="small">
+              金額と日付は分割払いの設定で決まります。カテゴリーと店名を変えると、ほかの回にも反映します。繰り上げ返済や削除は分割払いの画面から行えます。
+            </p>
+            <button type="button" className="btn btn-outline btn-small" onClick={() => { onClose(); go('installments'); }}>分割払いの画面を開く</button>
+          </div>
+        )}
 
-        {!tx && type === 'expense' && !advance && (
+        {!tx && type === 'expense' && !advance && !split && (
+          <div className="advance-box">
+            <label className="switch-row">
+              <span>
+                <strong>分割払い</strong>
+                <span className="muted small"> 毎月の分を、回数分まとめて記録します</span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={inst}
+                onChange={(e) => {
+                  setInst(e.target.checked);
+                  if (e.target.checked) setPayment('card'); // 分割払いはふつうカード
+                }}
+              />
+            </label>
+            {inst && (
+              <>
+                <div className="field-row">
+                  <label className="field">
+                    <span>回数</span>
+                    <select className="input" value={instCount} onChange={(e) => setInstCount(Number(e.target.value))}>
+                      {INSTALLMENT_COUNTS.map((c) => (
+                        <option key={c} value={c}>{c} 回</option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="field">
+                    <span>支払いの開始</span>
+                    <div className="segmented" role="group" aria-label="支払いの開始">
+                      <button type="button" className={instStart === 'this' ? 'active' : ''} aria-pressed={instStart === 'this'} onClick={() => setInstStart('this')}>今月から</button>
+                      <button type="button" className={instStart === 'next' ? 'active' : ''} aria-pressed={instStart === 'next'} onClick={() => setInstStart('next')}>来月から</button>
+                    </div>
+                  </div>
+                </div>
+                {instAmounts.length > 0 ? (
+                  <p className="small">
+                    毎月 <strong>{yen(instAmounts[1]!)}</strong> × {instCount} 回
+                    {instAmounts[0] !== instAmounts[1] && <span>（1 回目は端数を足して {yen(instAmounts[0]!)}）</span>}
+                    <br />
+                    <span className="muted">
+                      {monthLabel(instDates[0]!.slice(0, 7))} 〜 {monthLabel(instDates.at(-1)!.slice(0, 7))}・毎月 {Number(instDates[0]!.slice(8))} 日ごろ
+                    </span>
+                  </p>
+                ) : (
+                  <p className="muted small">金額を入れると、毎月の額が表示されます。</p>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {tx && type === 'expense' && !tx.advance && !tx.installment && <WaripoBox tx={tx} changed={changed} toast={toast} handleError={handleError} onClose={onClose} />}
+
+        {!tx && type === 'expense' && !advance && !inst && (
           <div className="advance-box">
             <label className="switch-row">
               <span>
@@ -194,7 +281,7 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
           </div>
         )}
 
-        {type === 'expense' && !tx?.split && !willSplit && (
+        {type === 'expense' && !tx?.split && !tx?.installment && !willSplit && !willInstall && (
           <div className="advance-box">
             <label className="switch-row">
               <span>
@@ -237,7 +324,7 @@ export function TxForm({ tx, categories, onClose, onSaved, handleError, changed,
         </label>
 
         {tx && tx.source !== 'manual' && <p className="muted small">記録元: {sourceLabel(tx)}</p>}
-        {tx && (
+        {tx && !tx.installment && (
           <button type="button" className="btn btn-danger" onClick={() => void remove()} disabled={busy}>
             この明細を削除
           </button>

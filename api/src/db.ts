@@ -6,6 +6,8 @@
 // USER#<sub>       TX#<YYYY-MM-DD>#<id>   明細 (日付順に並ぶので月単位で取り出せる)
 // USER#<sub>       RULE#<id>              自動振り分けルール
 // USER#<sub>       TOKEN#<id>             ショートカット用トークンの情報 (一覧表示用)
+// USER#<sub>       INST#<id>              分割払い (各回の明細の id・日付・金額)
+// USER#<sub>       PREFS                  設定 (分割払いの目安など)
 // TOKEN#<sha256>   TOKEN                  トークンからユーザーを引くための項目
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { ConditionalCheckFailedException, DynamoDBClient } from '@aws-sdk/client-dynamodb';
@@ -20,7 +22,7 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { defaultCategories, defaultRules } from './defaults.js';
-import type { ApiToken, Category, CreatedToken, Rule, Transaction } from './types.js';
+import type { ApiToken, Category, CreatedToken, InstallmentPlan, Rule, Transaction } from './types.js';
 
 const TABLE = process.env.TABLE_NAME ?? 'kakeibo';
 const doc = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
@@ -167,6 +169,77 @@ export async function updateTransaction(uid: string, old: Transaction, next: Tra
 
 export async function deleteTransaction(uid: string, id: string): Promise<void> {
   await doc.send(new DeleteCommand({ TableName: TABLE, Key: { PK: userPk(uid), SK: txSk(id) } }));
+}
+
+// ---------- 分割払い ----------
+
+const instSk = (id: string) => `INST#${id}`;
+
+/** 分割払いを作る: 各回の明細と、それをまとめる分割払いの項目を書き込む */
+export async function createInstallment(
+  uid: string,
+  plan: Omit<InstallmentPlan, 'id' | 'schedule' | 'createdAt'>,
+  payments: { date: string; amount: number }[],
+  base: Omit<Transaction, 'id' | 'createdAt' | 'date' | 'amount' | 'installment'>,
+): Promise<{ plan: InstallmentPlan; txs: Transaction[] }> {
+  const id = shortId();
+  const now = new Date().toISOString();
+  const txs: Transaction[] = payments.map((p, i) => ({
+    ...base,
+    id: `${p.date}_${shortId()}`,
+    date: p.date,
+    amount: p.amount,
+    installment: { planId: id, index: i + 1, count: payments.length },
+    createdAt: now,
+  }));
+  const full: InstallmentPlan = { ...plan, id, schedule: txs.map((t) => ({ txId: t.id, date: t.date, amount: t.amount })), createdAt: now };
+  await batchPut([
+    ...txs.map((t) => ({ PK: userPk(uid), SK: txSk(t.id), ...t })),
+    { PK: userPk(uid), SK: instSk(id), ...full },
+  ]);
+  return { plan: full, txs };
+}
+
+export async function getInstallment(uid: string, id: string): Promise<InstallmentPlan | undefined> {
+  const res = await doc.send(new GetCommand({ TableName: TABLE, Key: { PK: userPk(uid), SK: instSk(id) } }));
+  return res.Item ? strip<InstallmentPlan>(res.Item) : undefined;
+}
+
+export async function listInstallments(uid: string): Promise<InstallmentPlan[]> {
+  return (await queryAll(userPk(uid), 'INST#')).map((i) => strip<InstallmentPlan>(i));
+}
+
+export async function putInstallment(uid: string, plan: InstallmentPlan): Promise<void> {
+  await doc.send(new PutCommand({ TableName: TABLE, Item: { PK: userPk(uid), SK: instSk(plan.id), ...plan } }));
+}
+
+export async function deleteInstallment(uid: string, id: string): Promise<void> {
+  await doc.send(new DeleteCommand({ TableName: TABLE, Key: { PK: userPk(uid), SK: instSk(id) } }));
+}
+
+/** 明細の一部だけを書き換える (分割払いのほかの回に、カテゴリーや店名を合わせるとき) */
+export async function patchTransaction(uid: string, id: string, patch: Partial<Pick<Transaction, 'categoryId' | 'merchant' | 'amount' | 'confirmed' | 'installment'>>): Promise<void> {
+  const tx = await getTransaction(uid, id);
+  if (!tx) return; // 消されていたら何もしない
+  await doc.send(new PutCommand({ TableName: TABLE, Item: { PK: userPk(uid), SK: txSk(id), ...tx, ...patch } }));
+}
+
+// ---------- 設定 ----------
+
+export interface Prefs {
+  /** 毎月の分割払いの目安 (円) */
+  installmentThreshold?: number | null;
+}
+
+export async function getPrefs(uid: string): Promise<Prefs> {
+  const res = await doc.send(new GetCommand({ TableName: TABLE, Key: { PK: userPk(uid), SK: 'PREFS' } }));
+  return res.Item ? strip<Prefs>(res.Item) : {};
+}
+
+export async function savePrefs(uid: string, prefs: Prefs): Promise<Prefs> {
+  const next = { ...(await getPrefs(uid)), ...prefs };
+  await doc.send(new PutCommand({ TableName: TABLE, Item: { PK: userPk(uid), SK: 'PREFS', ...next } }));
+  return next;
 }
 
 // ---------- ルール ----------

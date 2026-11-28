@@ -27,6 +27,7 @@ export function TxRow({ tx, categories, onClick }: { tx: Transaction; categories
             {!tx.confirmed && <span className="tag tag-open">未確認</span>}
             {tx.advance && <span className={`tag${open ? ' tag-open' : ''}`}>{open ? '立替・未精算' : '立替'}</span>}
             {tx.split && <span className="tag">割り勘</span>}
+            {tx.installment && <span className="tag">分割 {tx.installment.index}/{tx.installment.count}{tx.installment.payoff ? '・繰上' : ''}</span>}
             {tx.merchant ? `${categoryLabel(tx.categoryId, categories)}・` : ''}
             {tx.type === 'income' ? '収入' : tx.source === 'manual' ? PAYMENT_LABELS[tx.payment] : sourceLabel(tx)}
             {tx.memo ? `・${tx.memo}` : ''}

@@ -5,12 +5,30 @@ import type {
 } from 'aws-lambda';
 import * as db from './db.js';
 import { isSubscription, pushStore } from './push.js';
-import { categoryLabel, groupsFromClaim, isDate, isMonth, matchRule, normalize, parseAmount, parseCardMail, todayJst, yen, type CardMail } from './logic.js';
+import {
+  categoryLabel,
+  groupsFromClaim,
+  installmentAmounts,
+  installmentDates,
+  isDate,
+  isMonth,
+  matchRule,
+  normalize,
+  parseAmount,
+  parseCardMail,
+  payoffSchedule,
+  summarizeInstallment,
+  todayJst,
+  yen,
+  type CardMail,
+} from './logic.js';
 import {
   isOpenAdvance,
   PAYMENT_LABELS,
   PAYMENT_METHODS,
   type Category,
+  type InstallmentPlan,
+  type InstallmentsResponse,
   type PaymentMethod,
   type ShortcutResult,
   type Transaction,
@@ -109,6 +127,19 @@ function validateTx(b: Record<string, unknown>, categories: Category[]) {
   };
 }
 
+/** 分割払いの指定 ({ count, start })。2 回以上のときだけ分割払いにする */
+function parseInstallment(v: unknown, tx: { type: TxType; amount: number; advance: boolean }): { count: number; start: 'this' | 'next' } | null {
+  if (!v || typeof v !== 'object') return null;
+  const o = v as { count?: unknown; start?: unknown };
+  const count = Number(o.count);
+  if (!Number.isFinite(count) || count < 2) return null;
+  if (!Number.isInteger(count) || count > 60) throw new HttpError(400, '分割の回数は 2〜60 回で指定してください');
+  if (tx.type !== 'expense') throw new HttpError(400, '分割払いにできるのは支出だけです');
+  if (tx.advance) throw new HttpError(400, '立て替えは分割払いにできません');
+  if (tx.amount < count) throw new HttpError(400, '金額が分割の回数より少ないです');
+  return { count, start: o.start === 'next' ? 'next' : 'this' };
+}
+
 const isTrue = (v: unknown) => v === true || v === 'true' || v === 'はい';
 
 /** 立て替えで受け取った額。空なら未精算 (null)。0 円 (結局もらえなかった) も可 */
@@ -164,22 +195,102 @@ async function appRoute(event: APIGatewayProxyEventV2WithJWTAuthorizer, uid: str
       return json(200, await db.listTransactions(uid, q.month));
     }
     case 'POST /transactions': {
-      const tx = validateTx(parseBody(event), await db.listCategories(uid));
+      const b = parseBody(event);
+      const tx = validateTx(b, await db.listCategories(uid));
+      const inst = parseInstallment(b.installment, tx);
+      if (inst) {
+        // 分割払い: 回数分の明細をまとめて作る (返すのは 1 回目の明細)
+        const { txs } = await db.createInstallment(
+          uid,
+          { merchant: tx.merchant, categoryId: tx.categoryId, total: tx.amount, count: inst.count, start: inst.start, purchaseDate: tx.date },
+          installmentDates(tx.date, inst.count, inst.start).map((date, i) => ({ date, amount: installmentAmounts(tx.amount, inst.count)[i]! })),
+          { ...tx, source: 'manual', confirmed: true, advance: false, received: null },
+        );
+        return json(201, txs[0]);
+      }
       return json(201, await db.createTransaction(uid, { ...tx, source: 'manual', confirmed: true }));
     }
     case 'PUT /transactions/{id}': {
       const old = await db.getTransaction(uid, id);
       if (!old) throw new HttpError(404, '明細がありません');
       const tx = validateTx(parseBody(event), await db.listCategories(uid));
-      const next: Transaction = { ...old, ...tx, confirmed: true };
+      // 分割払いの回は、金額・日付・立て替えを変えない (分割払いの設定で決まる)
+      const next: Transaction = old.installment
+        ? { ...old, ...tx, amount: old.amount, date: old.date, advance: false, received: null, installment: old.installment, confirmed: true }
+        : { ...old, ...tx, confirmed: true };
       const saved = await db.updateTransaction(uid, old, next);
       // waripo が作った明細 (割り勘の相手の負担分) は、カテゴリーを直しても店名ルールとして覚えない
       if (next.categoryId && next.categoryId !== old.categoryId && old.source !== 'waripo') await learnRule(uid, next.merchant, next.categoryId);
+      // 分割払い: カテゴリーと店名は、ほかの回にも合わせる
+      if (old.installment && (next.categoryId !== old.categoryId || next.merchant !== old.merchant)) {
+        const plan = await db.getInstallment(uid, old.installment.planId);
+        if (plan) {
+          for (const p of plan.schedule) {
+            if (p.txId !== old.id) await db.patchTransaction(uid, p.txId, { categoryId: next.categoryId, merchant: next.merchant, confirmed: true });
+          }
+          await db.putInstallment(uid, { ...plan, categoryId: next.categoryId, merchant: next.merchant });
+        }
+      }
       return json(200, saved);
     }
-    case 'DELETE /transactions/{id}':
+    case 'DELETE /transactions/{id}': {
+      const old = await db.getTransaction(uid, id);
+      if (old?.installment) throw new HttpError(400, '分割払いの回は 1 回分だけ削除できません。分割払いの画面から、分割払いごと削除してください');
       await db.deleteTransaction(uid, id);
       return json(200, { ok: true });
+    }
+
+    // 分割払い
+    case 'GET /installments': {
+      const today = todayJst();
+      const plans = (await db.listInstallments(uid))
+        .map((p) => summarizeInstallment(p, today))
+        // 支払い中 (次の支払日が近い順) → 支払い終わったもの (新しい順)
+        .sort((a, b) =>
+          a.finished !== b.finished ? (a.finished ? 1 : -1) : a.finished ? (a.purchaseDate < b.purchaseDate ? 1 : -1) : (a.nextDate! < b.nextDate! ? -1 : 1),
+        );
+      const res: InstallmentsResponse = { threshold: (await db.getPrefs(uid)).installmentThreshold ?? null, plans };
+      return json(200, res);
+    }
+    case 'PUT /installments/settings': {
+      const v = parseBody(event).threshold;
+      let threshold: number | null = null;
+      if (v !== null && v !== undefined && v !== '' && v !== 0) {
+        try {
+          threshold = parseAmount(v);
+        } catch (e) {
+          throw new HttpError(400, `目安の金額: ${(e as Error).message}`);
+        }
+      }
+      return json(200, { threshold: (await db.savePrefs(uid, { installmentThreshold: threshold })).installmentThreshold ?? null });
+    }
+    case 'POST /installments/{id}/payoff': {
+      const plan = await db.getInstallment(uid, id);
+      if (!plan) throw new HttpError(404, '分割払いがありません');
+      let result: ReturnType<typeof payoffSchedule<InstallmentPlan['schedule'][number]>>;
+      try {
+        result = payoffSchedule(plan.schedule, Number(parseBody(event).index));
+      } catch (e) {
+        throw new HttpError(400, (e as Error).message);
+      }
+      const last = result.kept.at(-1)!;
+      const lastTx = await db.getTransaction(uid, last.txId);
+      await db.patchTransaction(uid, last.txId, {
+        amount: last.amount,
+        ...(lastTx?.installment && { installment: { ...lastTx.installment, payoff: result.removed.length > 0 || lastTx.installment.payoff } }),
+      });
+      for (const p of result.removed) await db.deleteTransaction(uid, p.txId);
+      const next: InstallmentPlan = { ...plan, schedule: result.kept, paidOffAt: result.removed.length ? result.kept.length : plan.paidOffAt };
+      await db.putInstallment(uid, next);
+      return json(200, summarizeInstallment(next, todayJst()));
+    }
+    case 'DELETE /installments/{id}': {
+      const plan = await db.getInstallment(uid, id);
+      if (!plan) throw new HttpError(404, '分割払いがありません');
+      for (const p of plan.schedule) await db.deleteTransaction(uid, p.txId);
+      await db.deleteInstallment(uid, id);
+      return json(200, { ok: true });
+    }
 
     // 自動振り分けルール
     case 'GET /rules':

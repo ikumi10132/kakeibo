@@ -357,3 +357,55 @@ test('利用通知メールの読み取りテスト (記録はしない)', async
   assert.equal((await call('POST /mail/preview', { body: { text: '' } })).status, 400);
   assert.equal((await call<Transaction[]>('GET /transactions', { query: { month: '2026-11' } })).body.length, 0);
 });
+
+test('分割払い: 回数分の明細を作り、カテゴリーはほかの回にも反映、繰り上げ返済、まとめて削除', async () => {
+  const created = await call<Transaction>('POST /transactions', {
+    body: { type: 'expense', amount: 100_000, date: '2026-11-15', categoryId: 'food', payment: 'card', merchant: 'ヨドバシ', installment: { count: 10, start: 'next' } },
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.date, '2026-12-15'); // 来月から
+  assert.deepEqual(created.body.installment, { planId: created.body.installment!.planId, index: 1, count: 10 });
+  const planId = created.body.installment!.planId;
+
+  const dec = (await call<Transaction[]>('GET /transactions', { query: { month: '2026-12' } })).body;
+  const sep = (await call<Transaction[]>('GET /transactions', { query: { month: '2027-09' } })).body;
+  assert.deepEqual([dec.length, dec[0]!.amount, sep[0]!.installment!.index], [1, 10_000, 10]);
+  assert.equal((await call<Transaction[]>('GET /transactions', { query: { month: '2026-11' } })).body.length, 0);
+
+  // 1 つの回のカテゴリーを直すと、ほかの回も変わる。金額と日付は変えられない
+  const r = await call<Transaction>('PUT /transactions/{id}', { path: { id: dec[0]!.id }, body: { ...dec[0], categoryId: 'daily', amount: 1, date: '2026-12-01' } });
+  assert.deepEqual([r.body.categoryId, r.body.amount, r.body.date], ['daily', 10_000, '2026-12-15']);
+  assert.equal((await call<Transaction[]>('GET /transactions', { query: { month: '2027-09' } })).body[0]!.categoryId, 'daily');
+
+  // 1 回分だけは削除できない
+  assert.equal((await call('DELETE /transactions/{id}', { path: { id: dec[0]!.id } })).status, 400);
+
+  type Res = { threshold: number | null; plans: { id: string; count: number; schedule: unknown[]; paidOffAt?: number; remainingAmount: number }[] };
+  let list = await call<Res>('GET /installments');
+  assert.deepEqual([list.body.threshold, list.body.plans.length, list.body.plans[0]!.schedule.length], [null, 1, 10]);
+
+  // 4 回目 (2027-03) で繰り上げ返済: 4 回目が残り 7 回分になり、5 回目以降は消える
+  const p = await call<{ schedule: { amount: number }[]; paidOffAt: number }>('POST /installments/{id}/payoff', { path: { id: planId }, body: { index: 4 } });
+  assert.equal(p.status, 200);
+  assert.deepEqual([p.body.schedule.length, p.body.schedule[3]!.amount, p.body.paidOffAt], [4, 70_000, 4]);
+  const mar = (await call<Transaction[]>('GET /transactions', { query: { month: '2027-03' } })).body[0]!;
+  assert.deepEqual([mar.amount, mar.installment!.payoff], [70_000, true]);
+  assert.equal((await call<Transaction[]>('GET /transactions', { query: { month: '2027-04' } })).body.length, 0);
+  assert.equal((await call('POST /installments/{id}/payoff', { path: { id: planId }, body: { index: 9 } })).status, 400);
+
+  // 目安
+  assert.equal((await call<{ threshold: number }>('PUT /installments/settings', { body: { threshold: '¥30,000' } })).body.threshold, 30_000);
+  list = await call<Res>('GET /installments');
+  assert.equal(list.body.threshold, 30_000);
+  assert.equal((await call<{ threshold: null }>('PUT /installments/settings', { body: { threshold: '' } })).body.threshold, null);
+
+  // 入力のチェック
+  assert.equal((await call('POST /transactions', { body: { type: 'income', amount: 1000, installment: { count: 3 } } })).status, 400);
+  assert.equal((await call('POST /transactions', { body: { type: 'expense', amount: 1000, installment: { count: 61 } } })).status, 400);
+  assert.equal((await call('POST /transactions', { body: { type: 'expense', amount: 1000, advance: true, installment: { count: 3 } } })).status, 400);
+
+  // まとめて削除
+  assert.equal((await call('DELETE /installments/{id}', { path: { id: planId } })).status, 200);
+  assert.equal((await call<Res>('GET /installments')).body.plans.length, 0);
+  assert.equal((await call<Transaction[]>('GET /transactions', { query: { month: '2026-12' } })).body.length, 0);
+});

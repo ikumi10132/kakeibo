@@ -1,4 +1,4 @@
-import type { ApiToken, Category, CreatedToken, Rule, Transaction, TransactionInput } from '../../api/src/types';
+import type { ApiToken, Category, CreatedToken, InstallmentsResponse, InstallmentSummary, Rule, Transaction, TransactionInput } from '../../api/src/types';
 import { getAccessToken } from './auth';
 import { getConfig } from './config';
 
@@ -31,7 +31,8 @@ export const api = {
   transactions: (month: string) => call<Transaction[]>(`/transactions?month=${month}`),
   unconfirmed: () => call<Transaction[]>('/transactions?unconfirmed=1'),
   openAdvances: () => call<Transaction[]>('/transactions?advance=open'),
-  createTransaction: (t: TransactionInput) => send<Transaction>('POST', '/transactions', t),
+  /** installment を付けると分割払い (回数分の明細を作り、1 回目を返す) */
+  createTransaction: (t: TransactionInput & { installment?: { count: number; start: 'this' | 'next' } }) => send<Transaction>('POST', '/transactions', t),
   updateTransaction: (id: string, t: TransactionInput) => send<Transaction>('PUT', `/transactions/${enc(id)}`, t),
   deleteTransaction: (id: string) => send<{ ok: true }>('DELETE', `/transactions/${enc(id)}`),
 
@@ -48,6 +49,11 @@ export const api = {
   unsubscribePush: (endpoint: string) => send<{ ok: true }>('POST', '/push/unsubscribe', { endpoint }),
   savePushSettings: (s: NotifySettings) => send<NotifySettings>('PUT', '/push/settings', s),
   testPush: () => send<{ sent: number }>('POST', '/push/test'),
+
+  installments: () => call<InstallmentsResponse>('/installments'),
+  saveInstallmentThreshold: (threshold: number | null) => send<{ threshold: number | null }>('PUT', '/installments/settings', { threshold }),
+  payoffInstallment: (id: string, index: number) => send<InstallmentSummary>('POST', `/installments/${enc(id)}/payoff`, { index }),
+  deleteInstallment: (id: string) => send<{ ok: true }>('DELETE', `/installments/${enc(id)}`),
 
   previewMail: (text: string) => send<MailPreview>('POST', '/mail/preview', { text }),
 };

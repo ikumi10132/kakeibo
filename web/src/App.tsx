@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import type { Category, Transaction } from '../../api/src/types';
+import type { Category, InstallmentsResponse, Transaction } from '../../api/src/types';
 import { api, AuthError } from './api';
 import { handleRedirect, isLoggedIn, login, logout } from './auth';
 import { AdvancesPage } from './components/Advances';
 import { Home } from './components/Home';
-import { IconGear, IconHome, IconInbox, IconList, IconLogout, IconPlus, IconSwap } from './components/Icons';
+import { IconGear, IconHome, IconInbox, IconInstallment, IconList, IconLogout, IconPlus, IconSwap } from './components/Icons';
+import { InstallmentsPage } from './components/Installments';
 import { Inbox } from './components/Inbox';
 import { Settings } from './components/Settings';
 import { TxForm } from './components/TxForm';
@@ -50,7 +51,7 @@ export function App() {
   return <Main onAuthError={() => setPhase({ name: 'login' })} />;
 }
 
-export type Tab = 'home' | 'list' | 'inbox' | 'advances' | 'settings';
+export type Tab = 'home' | 'list' | 'inbox' | 'advances' | 'installments' | 'settings';
 
 interface NavItem {
   id: Tab;
@@ -64,6 +65,7 @@ const SIDE_NAV: NavItem[] = [
   { id: 'list', label: '明細・カレンダー', icon: <IconList /> },
   { id: 'inbox', label: '未確認', icon: <IconInbox /> },
   { id: 'advances', label: '立て替え', icon: <IconSwap /> },
+  { id: 'installments', label: '分割払い', icon: <IconInstallment /> },
 ];
 
 export type Editing = { tx?: Transaction } | null;
@@ -87,6 +89,7 @@ function Main({ onAuthError }: { onAuthError: () => void }) {
   const [txs, setTxs] = useState<Transaction[] | null>(null);
   const [unconfirmed, setUnconfirmed] = useState<Transaction[] | null>(null);
   const [advances, setAdvances] = useState<Transaction[]>([]);
+  const [installments, setInstallments] = useState<InstallmentsResponse | null>(null);
   const [version, setVersion] = useState(0);
   const [editing, setEditing] = useState<Editing>(null);
   const [toastMsg, setToastMsg] = useState<{ text: string; error?: boolean } | null>(null);
@@ -128,6 +131,7 @@ function Main({ onAuthError }: { onAuthError: () => void }) {
   useEffect(() => {
     api.unconfirmed().then(setUnconfirmed, handleError);
     api.openAdvances().then(setAdvances, handleError);
+    api.installments().then(setInstallments, handleError);
   }, [version, handleError]);
 
   // アプリに戻ってきたとき (ショートカットで記録したあとなど) に最新にする
@@ -146,7 +150,7 @@ function Main({ onAuthError }: { onAuthError: () => void }) {
   useEffect(() => {
     const open = (url: string) => {
       const t = new URL(url, location.origin).searchParams.get('tab');
-      if (t && (['home', 'list', 'inbox', 'advances', 'settings'] as string[]).includes(t)) go(t as Tab);
+      if (t && (['home', 'list', 'inbox', 'advances', 'installments', 'settings'] as string[]).includes(t)) go(t as Tab);
       setVersion((v) => v + 1);
     };
     if (new URLSearchParams(location.search).has('tab')) {
@@ -228,11 +232,12 @@ function Main({ onAuthError }: { onAuthError: () => void }) {
 
       <main className="main">
         {tab === 'home' && (
-          <Home {...shared} month={month} setMonth={setMonth} txs={txs} advances={advances} unconfirmed={unconfirmed ?? []} />
+          <Home {...shared} month={month} setMonth={setMonth} txs={txs} advances={advances} unconfirmed={unconfirmed ?? []} installments={installments} />
         )}
         {tab === 'list' && <TxList {...shared} month={month} setMonth={setMonth} txs={txs} />}
         {tab === 'inbox' && <Inbox {...shared} txs={unconfirmed} />}
         {tab === 'advances' && <AdvancesPage {...shared} txs={advances} />}
+        {tab === 'installments' && <InstallmentsPage {...shared} month={month} data={installments} />}
         {tab === 'settings' && <Settings {...shared} month={month} />}
       </main>
 

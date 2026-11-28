@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ownAmount, type Transaction } from '../../../api/src/types';
+import { installmentLevel, ownAmount, type InstallmentsResponse, type Transaction } from '../../../api/src/types';
 import { api } from '../api';
 import type { Shared } from '../App';
 import { monthLabel, shiftMonth, thisMonth, todayJst, totals, yen } from '../util';
 import { CumulativeChart, DonutChart, foldSlices, type LineSeries, type Slice } from './Charts';
 import { IconAlert } from './Icons';
+import { installmentTotal } from './Installments';
 import { MonthNav } from './MonthNav';
 import { TxForm } from './TxForm';
 
@@ -14,6 +15,7 @@ interface Props extends Shared {
   txs: Transaction[] | null;
   advances: Transaction[];
   unconfirmed: Transaction[];
+  installments: InstallmentsResponse | null;
 }
 
 const daysIn = (month: string) => {
@@ -33,7 +35,7 @@ function cumulative(txs: Transaction[], upTo: number): number[] {
   return perDay.map((v) => (sum += v));
 }
 
-export function Home({ month, setMonth, txs, advances, unconfirmed, ...shared }: Props) {
+export function Home({ month, setMonth, txs, advances, unconfirmed, installments, ...shared }: Props) {
   const { categories, go, toast, changed } = shared;
   const [formKey, setFormKey] = useState(0);
   const [prevTxs, setPrevTxs] = useState<Transaction[] | null>(null);
@@ -53,6 +55,10 @@ export function Home({ month, setMonth, txs, advances, unconfirmed, ...shared }:
   const t = txs ? totals(txs, categories) : null;
   const advanceTotal = advances.reduce((s, a) => s + a.amount, 0);
   const balance = t ? t.income - t.expense : 0;
+  // 分割払い: この月に支払う分の合計。目安に近づいたら黄、超えたら赤
+  const instTotal = installmentTotal(installments, month);
+  const instThreshold = installments?.threshold ?? null;
+  const instLevel = installmentLevel(instTotal, instThreshold);
 
   const slices: Slice[] = foldSlices(
     (t?.byCategory ?? []).map(({ category, amount }) => ({
@@ -112,6 +118,13 @@ export function Home({ month, setMonth, txs, advances, unconfirmed, ...shared }:
           <p className="kpi-label">立て替え中</p>
           <p className={`kpi-value ${advances.length ? 'warn' : ''}`}>{yen(advanceTotal)}</p>
           <p className="kpi-sub">未精算 {advances.length} 件</p>
+        </button>
+        <button className={`kpi kpi-button kpi-inst level-${instLevel}`} onClick={() => go('installments')}>
+          <p className="kpi-label">分割払い（{month === thisMonth() ? '今月' : 'この月'}）</p>
+          <p className="kpi-value">{installments ? yen(instTotal) : '—'}</p>
+          <p className="kpi-sub">
+            {!instThreshold ? '目安なし' : instLevel === 'over' ? `目安 ${yen(instThreshold)} 超え` : `目安 ${yen(instThreshold)}`}
+          </p>
         </button>
       </section>
 

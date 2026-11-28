@@ -136,3 +136,27 @@ test('三井住友カードの利用通知メールから日付・金額・利�
   // 外貨だけの利用 (円の金額がない) は記録しない
   assert.throws(() => parseCardMail(SMBC_MAIL.replace('1,280円', '12.34 USD')), /金額/);
 });
+
+test('分割払い: 各回の金額 (端数は 1 回目)、日付 (月末に合わせる・年をまたぐ)、繰り上げ返済、目安の色', async () => {
+  const { installmentAmounts, installmentDates, payoffSchedule } = await import('../src/logic.js');
+  const { installmentLevel } = await import('../src/types.js');
+  assert.deepEqual(installmentAmounts(100_000, 3), [33_334, 33_333, 33_333]);
+  assert.deepEqual(installmentAmounts(120_000, 12), Array(12).fill(10_000));
+  assert.equal(installmentAmounts(99_999, 10).reduce((a, b) => a + b, 0), 99_999);
+
+  assert.deepEqual(installmentDates('2026-11-30', 4, 'this'), ['2026-11-30', '2026-12-30', '2027-01-30', '2027-02-28']);
+  assert.deepEqual(installmentDates('2026-01-31', 2, 'next'), ['2026-02-28', '2026-03-31']);
+
+  const s = installmentAmounts(100_000, 10).map((amount, i) => ({ txId: `t${i + 1}`, amount }));
+  const { kept, removed } = payoffSchedule(s, 4);
+  assert.deepEqual(kept.map((p) => p.amount), [10_000, 10_000, 10_000, 70_000]); // 4 回目で残り 7 回分
+  assert.deepEqual(removed.map((p) => p.txId), ['t5', 't6', 't7', 't8', 't9', 't10']);
+  assert.equal(payoffSchedule(s, 10).removed.length, 0);
+  assert.throws(() => payoffSchedule(s, 11), /不正/);
+
+  assert.equal(installmentLevel(20_000, null), 'normal');
+  assert.equal(installmentLevel(19_999, 30_000), 'normal');
+  assert.equal(installmentLevel(20_000, 30_000), 'near'); // 目安まで 1 万円以内
+  assert.equal(installmentLevel(30_000, 30_000), 'near');
+  assert.equal(installmentLevel(30_001, 30_000), 'over');
+});

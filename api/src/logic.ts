@@ -1,5 +1,5 @@
 // DynamoDB に依存しない純粋な処理 (テストしやすいように分けている)
-import type { Category, Rule } from './types.js';
+import type { Category, InstallmentPlan, InstallmentSummary, Rule } from './types.js';
 
 /** 日本時間の今日を YYYY-MM-DD で返す */
 export function todayJst(now = new Date()): string {
@@ -123,3 +123,48 @@ export function groupsFromClaim(claim: unknown): string[] {
     .map((s) => s.replace(/^"|"$/g, ''))
     .filter(Boolean);
 }
+
+// ---------- 分割払い ----------
+
+/** 各回の金額。割り切れない端数は 1 回目に足す (カード会社と同じ) */
+export function installmentAmounts(total: number, count: number): number[] {
+  const monthly = Math.floor(total / count);
+  return [total - monthly * (count - 1), ...Array.from({ length: count - 1 }, () => monthly)];
+}
+
+const daysInMonth = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+
+/** 各回の日付。買った日と同じ日 (その月にない日なら月末)。start = next なら翌月から */
+export function installmentDates(purchaseDate: string, count: number, start: 'this' | 'next'): string[] {
+  const [y, m, d] = purchaseDate.split('-').map(Number) as [number, number, number];
+  return Array.from({ length: count }, (_, i) => {
+    const t = new Date(Date.UTC(y, m - 1 + i + (start === 'next' ? 1 : 0), 1));
+    const yy = t.getUTCFullYear();
+    const mm = t.getUTCMonth() + 1;
+    const dd = Math.min(d, daysInMonth(yy, mm));
+    return `${yy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+  });
+}
+
+/** 繰り上げ返済: index 回目 (1 始まり) で残りをまとめて払う。その回の金額と、消す回を返す */
+export function payoffSchedule<T extends { amount: number }>(schedule: T[], index: number): { kept: T[]; removed: T[] } {
+  if (!Number.isInteger(index) || index < 1 || index > schedule.length) throw new Error('繰り上げ返済する回が不正です');
+  const rest = schedule.slice(index - 1).reduce((s, p) => s + p.amount, 0);
+  const kept = schedule.slice(0, index).map((p, i) => (i === index - 1 ? { ...p, amount: rest } : p));
+  return { kept, removed: schedule.slice(index) };
+}
+
+/** 一覧用: 何回払ったか、残りいくらか (今日を含む日までに支払日が来た回を「支払済み」とする) */
+export function summarizeInstallment(plan: InstallmentPlan, today: string): InstallmentSummary {
+  const paid = plan.schedule.filter((p) => p.date <= today);
+  const rest = plan.schedule.filter((p) => p.date > today);
+  return {
+    ...plan,
+    monthly: Math.floor(plan.total / plan.count),
+    paidCount: paid.length,
+    remainingAmount: rest.reduce((s, p) => s + p.amount, 0),
+    nextDate: rest[0]?.date ?? null,
+    finished: rest.length === 0,
+  };
+}
+

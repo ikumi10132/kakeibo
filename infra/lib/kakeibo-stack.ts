@@ -155,6 +155,10 @@ export class KakeiboStack extends cdk.Stack {
       ['/push/settings', [PUT]],
       ['/push/test', [POST]],
       ['/mail/preview', [POST]],
+      ['/installments', [GET]],
+      ['/installments/settings', [PUT]],
+      ['/installments/{id}', [DELETE]],
+      ['/installments/{id}/payoff', [POST]],
     ];
     for (const [p, methods] of routes) api.addRoutes({ path: p, methods, integration });
 

@@ -179,13 +179,13 @@ svg { flex: none; }
 
 /* ---- 今月のまとめ ---- */
 .kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-@media (min-width: 900px) { .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; } }
+@media (min-width: 900px) { .kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; } }
 .kpi {
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 14px 16px; display: flex; flex-direction: column; text-align: left;
 }
-.kpi:first-child, .kpi:last-child { grid-column: 1 / -1; }
-@media (min-width: 900px) { .kpi { padding: 20px; } .kpi:first-child, .kpi:last-child { grid-column: auto; } }
+.kpi:first-child { grid-column: 1 / -1; }
+@media (min-width: 900px) { .kpi { padding: 20px; } .kpi:first-child { grid-column: auto; } }
 .kpi-button { cursor: pointer; }
 .kpi-button:hover { border-color: var(--border-strong); }
 .kpi-label { font-size: 13px; color: var(--muted); }
@@ -485,3 +485,28 @@ textarea.input { line-height: 1.6; resize: vertical; }
 
 .btn-row { display: flex; flex-wrap: wrap; gap: 10px; }
 .preview-result { background: var(--surface); border-radius: var(--radius-s); padding: 12px 14px; }
+
+/* ---- 分割払い: 目安に近い (黄)・超えた (赤) ---- */
+:root { --near: #8a6100; --near-soft: #fff7d6; --near-border: #e6c44a; }
+@media (prefers-color-scheme: dark) { :root { --near: #f0cf62; --near-soft: #362c0c; --near-border: #6e5a1a; } }
+.level-near { background: var(--near-soft); border-color: var(--near-border); }
+.level-near .kpi-value, .level-near .inst-total { color: var(--near); }
+.level-over { background: var(--danger-soft); border-color: var(--danger); }
+.level-over .kpi-value, .level-over .inst-total { color: var(--danger); }
+.kpi-inst .kpi-value { white-space: nowrap; }
+
+.inst-summary { gap: 6px; align-items: flex-start; }
+.inst-total { font-size: 34px; font-weight: 700; line-height: 1.3; }
+.inst-threshold { width: 100%; display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+.section-title { font-size: 15px; font-weight: 700; color: var(--muted); }
+.inst-list, .inst-done { display: flex; flex-direction: column; gap: 12px; }
+.inst-done summary { cursor: pointer; color: var(--muted); font-weight: 700; padding: 4px 0; }
+.inst-card { gap: 12px; }
+.inst-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.inst-title { font-size: 17px; font-weight: 700; }
+.inst-monthly { font-weight: 700; white-space: nowrap; }
+.inst-progress { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.inst-progress > div { height: 100%; background: var(--accent); border-radius: 999px; }
+.inst-kv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.inst-kv dt { font-size: 12px; color: var(--muted); }
+.inst-kv dd { font-weight: 700; font-size: 14px; }
